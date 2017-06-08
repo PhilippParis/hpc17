@@ -64,5 +64,64 @@ void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Da
 void cleanup_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
 }
 
+void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
+    MPI_Datatype recvtype, int start, int end, int root, MPI_Comm comm) 
+{
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+    
+    if (start + 1 == end) {
+        if (rank == root) {
+            int size_per_element = 0;
+            MPI_Type_get_true_extent(recvtype, NULL, &size_per_element);
+            memcpy(recvbuf, sendbuf, size_per_element * sendcount);
+        }
+    }
+    
+    int n = (end - start) / 2;
+    int m = start + end;
+    int subroot = 0;
+    int blocks = 0;
+    int newroot = root;
+    
+    if (root < m) {
+        subroot = m;
+        blocks = end - start - n;
+        if (rank < m) {
+            if (rank == root) {
+                sendbuf += (m - start); // TODO ?
+            }
+            end = m;
+        } else {
+            start = m;
+            newroot = subroot;
+        }
+    } else {
+        subroot = start; 
+        blocks = n;
+        if (rank >= m) {
+            start = m;
+        } else {
+            end = m;
+            newroot = subroot;
+        }
+    }
+    
+    // send data to subroot
+    if (rank == root) {
+        MPI_Send(sendbuf, blocks, sendtype, subroot, MPI_ANY_TAG, comm);
+    } else if (rank == subroot) {
+        int size_per_element = 0;
+        MPI_Type_get_true_extent(recvtype, NULL, &size_per_element);
+        sendbuf = (void*) malloc(blocks * size_per_element * sendcount);
+        MPI_Recv(sendbuf, blocks, recvtype, root, MPI_ANY_TAG, comm, MPI_STATUS_IGNORE);
+    }
+        
+    scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, start, end, newroot, comm);
+    if (rank != root && sendbuf != NULL) {
+        free(sendbuf);
+    }
+}
+
 /***************************************/
 
