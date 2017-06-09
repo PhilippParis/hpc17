@@ -49,37 +49,26 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 /***************************************/
 
 /***************************************/
-// Scatter
-int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
-    MPI_Datatype recvtype, int root, MPI_Comm comm) {
-
-  MPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
-  return MPI_SUCCESS;
-}
-
-void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
-}
-
-
-void cleanup_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
-}
 
 void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
     MPI_Datatype recvtype, int start, int end, int root, MPI_Comm comm) 
 {
+    
     int rank;
+    int size_per_element = 0;
+    int lb = 0;
     MPI_Comm_rank(comm, &rank);
+    MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
     
     if (start + 1 == end) {
         if (rank == root) {
-            int size_per_element = 0;
-            MPI_Type_get_true_extent(recvtype, NULL, &size_per_element);
             memcpy(recvbuf, sendbuf, size_per_element * sendcount);
+            return;
         }
     }
     
     int n = (end - start) / 2;
-    int m = start + end;
+    int m = start + n;
     int subroot = 0;
     int blocks = 0;
     int newroot = root;
@@ -89,7 +78,9 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
         blocks = end - start - n;
         if (rank < m) {
             if (rank == root) {
-                sendbuf += (m - start); // TODO ?
+                char* tmp = (char*) sendbuf;
+                tmp += (m - start) * size_per_element * sendcount; // TODO ?
+                sendbuf = tmp;
             }
             end = m;
         } else {
@@ -109,12 +100,10 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
     
     // send data to subroot
     if (rank == root) {
-        MPI_Send(sendbuf, blocks, sendtype, subroot, MPI_ANY_TAG, comm);
+        MPI_Send(sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
-        int size_per_element = 0;
-        MPI_Type_get_true_extent(recvtype, NULL, &size_per_element);
-        sendbuf = (void*) malloc(blocks * size_per_element * sendcount);
-        MPI_Recv(sendbuf, blocks, recvtype, root, MPI_ANY_TAG, comm, MPI_STATUS_IGNORE);
+        sendbuf = (void*) malloc(blocks * size_per_element * recvcount);
+        MPI_Recv(sendbuf, blocks * recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
     }
         
     scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, start, end, newroot, comm);
@@ -122,6 +111,25 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
         free(sendbuf);
     }
 }
+
+
+// Scatter
+int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
+    MPI_Datatype recvtype, int root, MPI_Comm comm) {
+    
+    int size = 0;
+    MPI_Comm_size(comm, &size);
+    scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, 0, size, root, comm);
+    return MPI_SUCCESS;
+}
+
+void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
+}
+
+
+void cleanup_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
+}
+
 
 /***************************************/
 
