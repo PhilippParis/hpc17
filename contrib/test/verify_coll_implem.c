@@ -31,17 +31,27 @@
 
 static const int OUTPUT_RANK = 0;
 
+static void test_collective_all_roots(char* name, basic_collective_params_t* params, int size) {
+  for (int root = 0; root < size; root++) {
+    params->root = root;
+    test_collective(name, params);
+  }
+}
+
+
+
 int main(int argc, char* argv[]) {
   int count = 0;
   int error;
   char *mpicall_name = NULL;
   int rank;
-  basic_collective_params_t params;
+  int size;
 
   srand(1000);
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   if (argc < 3) {
     if (rank == OUTPUT_RANK) {
@@ -71,14 +81,197 @@ int main(int argc, char* argv[]) {
     exit(0);
   }
 
-  params.root = 0;
-  params.sendtype = MPI_INT;
-  params.recvtype = MPI_INT;
-  params.comm = MPI_COMM_WORLD;
-  params.sendcount = count;
-  params.recvcount = count;
+  // simple type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Simple Type:\n");
+    }
 
-  test_collective(mpicall_name, &params);
+    basic_collective_params_t params = {
+      .sendtype = MPI_INT,
+      .recvtype = MPI_INT,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+  }
+
+  // contiguous type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Contiguous Type:\n");
+    }
+
+    MPI_Datatype type;
+    MPI_Type_contiguous(3, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // vector type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Vector Type:\n");
+    }
+
+    MPI_Datatype type;
+    MPI_Type_vector(2, 5, 2, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // hvector type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> HVector Type:\n");
+    }
+
+    MPI_Datatype type;
+    MPI_Type_create_hvector(2, 5, 2, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // indexed type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Indexed Type:\n");
+    }
+
+    const int blocklens[3] = {2, 3, 1};
+    const int displacements[3] = {0, 3, 8};
+
+    MPI_Datatype type;
+    MPI_Type_indexed(3, blocklens, displacements, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // hindexed type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> HIndexed Type:\n");
+    }
+
+    const int blocklens[3] = {2, 3, 1};
+    const MPI_Aint displacements[3] = {0, 3, 8};
+
+    MPI_Datatype type;
+    MPI_Type_create_hindexed(3, blocklens, displacements, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // struct type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Struct Type:\n");
+    }
+
+    const int blocklens[2] = {2, 3};
+    const MPI_Aint displacements[2] = {0, 64};
+    const MPI_Datatype oldtypes[2] = {MPI_INT, MPI_CHAR};
+
+    MPI_Datatype type;
+    MPI_Type_create_struct(2, blocklens, displacements, oldtypes, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
+
+  // subarray type
+  {
+    if (rank == OUTPUT_RANK) {
+      printf(">>>> Subarray Type:\n");
+    }
+
+    const int sizes[] = {10, 10};
+    const int subsizes[] = {6, 6};
+    const int starts[] = {2, 2};
+
+    MPI_Datatype type;
+    MPI_Type_create_subarray(2, sizes, subsizes, starts, MPI_ORDER_C, MPI_INT, &type);
+    MPI_Type_commit(&type);
+
+    basic_collective_params_t params = {
+      .sendtype = type,
+      .recvtype = type,
+      .comm = MPI_COMM_WORLD,
+      .sendcount = count,
+      .recvcount = count
+    };
+
+    test_collective_all_roots(mpicall_name, &params, size);
+
+    MPI_Type_free(&type);
+  }
 
   free(mpicall_name);
 

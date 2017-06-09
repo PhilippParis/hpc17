@@ -146,7 +146,7 @@ void print_test_result(const char* mpicall_name, basic_collective_params_t* para
   MPI_Comm_rank(params->comm, &rank);
 
   if (rank == OUTPUT_RANK) {
-    sprintf(tmps, "%s (count=%d)", mpicall_name, params->sendcount);
+    sprintf(tmps, "%s (count=%d, root=%d)", mpicall_name, params->sendcount, params->root);
     printf("%-50s ... %-10s\n", tmps, test_res_str[test_res]);
   }
 }
