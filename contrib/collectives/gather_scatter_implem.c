@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdbool.h>
 #include <limits.h>
 #include "mpi.h"
 #include "gather_scatter_implem.h"
@@ -50,37 +51,37 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 /***************************************/
 
-void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
-    MPI_Datatype recvtype, int start, int end, int root, MPI_Comm comm) 
+void scatter_divide_and_conquer(char *buffer,
+                                const int sendcount, const int recvcount,
+                                const MPI_Datatype sendtype, const MPI_Datatype recvtype,
+                                int start, int end, int root, MPI_Comm comm,
+                                const int rank, const MPI_Aint size_per_element)
 {
-    
-    int rank;
-    MPI_Aint size_per_element = 0;
-    MPI_Aint lb = 0;
-    MPI_Comm_rank(comm, &rank);
-    MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
-    
-    if (start + 1 == end) {
-        memcpy(recvbuf, sendbuf, size_per_element * sendcount);
+    const int n = (end - start) / 2;
+    const int m = start + n;
+
+    if (n == 0) {
         return;
     }
-    
-    int n = (end - start) / 2;
-    int m = start + n;
+
     int subroot = 0;
     int blocks = 0;
     int newroot = root;
-    char* shifted_sendbuf = (char*) sendbuf;
+    char* sendbuf = buffer;
+    char* recvbuf = buffer;
     
     if (root < m) {
         subroot = m;
         blocks = end - start - n;
         if (rank < m) {
             if (rank == root) {
-                shifted_sendbuf += (m - start) * size_per_element * sendcount;
+                sendbuf += m * size_per_element * sendcount;
             }
             end = m;
         } else {
+            if (rank == subroot) {
+                recvbuf += m * size_per_element * sendcount;
+            }
             start = m;
             newroot = subroot;
         }
@@ -88,35 +89,83 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
         subroot = start; 
         blocks = n;
         if (rank >= m) {
+            if (rank == root) {
+                sendbuf += start * size_per_element * sendcount;
+            }
             start = m;
         } else {
+            if (rank == subroot) {
+                recvbuf += start * size_per_element * sendcount;
+            }
             end = m;
             newroot = subroot;
         }
     }
-    
+
     // send data to subroot
     if (rank == root) {
-        MPI_Send(shifted_sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
+        MPI_Send(sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
-        sendbuf = (void*) malloc(blocks * size_per_element * recvcount);
-        MPI_Recv(sendbuf, blocks * recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
+        MPI_Recv(recvbuf, blocks * recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
     }
-        
-    scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, start, end, newroot, comm);
-    if (rank != root && sendbuf != NULL) {
-        free(sendbuf);
-    }
+
+    scatter_divide_and_conquer(buffer, sendcount, recvcount, sendtype, recvtype,
+                               start, end, newroot, comm, rank, size_per_element);
 }
 
+//#define SCATTER_DEBUG
 
 // Scatter
-int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
-    MPI_Datatype recvtype, int root, MPI_Comm comm) {
-    int size = 0;
+int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
+               void* recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+{
+    int size;
     MPI_Comm_size(comm, &size);
 
-    scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, 0, size, root, comm);
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+
+    MPI_Aint lb;
+    MPI_Aint size_per_element;
+    MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
+
+    char* buffer;
+    if (rank != root) {
+        buffer = (char*)malloc(sendcount * size_per_element * size);
+    } else {
+        buffer = (char*)sendbuf;
+    }
+
+    // =======================================
+#ifdef SCATTER_DEBUG
+    int* tmp = (int*) sendbuf;
+
+    if (rank == root) {
+        for (int p = 0; p < size; ++p) {
+            printf("%i:", p);
+            for (int i = 0; i < sendcount; ++i) {
+                printf("%i, ", *tmp);
+                tmp++;
+            }
+            printf("\n");
+        }
+    }
+#endif
+    // ==============================
+
+    scatter_divide_and_conquer(buffer, sendcount, recvcount, sendtype, recvtype,
+                               0, size, root, comm, rank, size_per_element);
+    memcpy(recvbuf, buffer + sendcount * size_per_element * rank, sendcount * size_per_element);
+
+#ifdef SCATTER_DEBUG
+    printf("recv: %i: %i\n", rank, *((int*) recvbuf));
+    fflush(stdout);
+#endif
+
+    if (rank != root) {
+        free(buffer);
+    }
+
     return MPI_SUCCESS;
 }
 
