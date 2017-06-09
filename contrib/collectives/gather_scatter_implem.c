@@ -61,10 +61,8 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
     MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
     
     if (start + 1 == end) {
-        if (rank == root) {
-            memcpy(recvbuf, sendbuf, size_per_element * sendcount);
-            return;
-        }
+        memcpy(recvbuf, sendbuf, size_per_element * sendcount);
+        return;
     }
     
     int n = (end - start) / 2;
@@ -72,15 +70,14 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
     int subroot = 0;
     int blocks = 0;
     int newroot = root;
+    char* shifted_sendbuf = (char*) sendbuf;
     
     if (root < m) {
         subroot = m;
         blocks = end - start - n;
         if (rank < m) {
             if (rank == root) {
-                char* tmp = (char*) sendbuf;
-                tmp += (m - start) * size_per_element * sendcount; // TODO ?
-                sendbuf = tmp;
+                shifted_sendbuf += (m - start) * size_per_element * sendcount;
             }
             end = m;
         } else {
@@ -100,7 +97,7 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
     
     // send data to subroot
     if (rank == root) {
-        MPI_Send(sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
+        MPI_Send(shifted_sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
         sendbuf = (void*) malloc(blocks * size_per_element * recvcount);
         MPI_Recv(sendbuf, blocks * recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
@@ -116,9 +113,9 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
 // Scatter
 int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
     MPI_Datatype recvtype, int root, MPI_Comm comm) {
-    
     int size = 0;
     MPI_Comm_size(comm, &size);
+
     scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, 0, size, root, comm);
     return MPI_SUCCESS;
 }
