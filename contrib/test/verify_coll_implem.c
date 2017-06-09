@@ -121,6 +121,34 @@ int main(int argc, char* argv[]) {
     MPI_Type_free(&type);
   }
 
+  // contiguous type
+  {
+      if (rank == OUTPUT_RANK) {
+          printf(">>>> Contiguous Type (different count):\n");
+      }
+
+      MPI_Datatype send_type;
+      MPI_Type_contiguous(4, MPI_INT, &send_type);
+      MPI_Type_commit(&send_type);
+
+      MPI_Datatype recv_type;
+      MPI_Type_contiguous(2, MPI_INT, &recv_type);
+      MPI_Type_commit(&recv_type);
+
+      basic_collective_params_t params = {
+          .sendtype = send_type,
+          .recvtype = recv_type,
+          .comm = MPI_COMM_WORLD,
+          .sendcount = count,
+          .recvcount = 2 * count
+      };
+
+      test_collective_all_roots(mpicall_name, &params, size);
+
+      MPI_Type_free(&send_type);
+      MPI_Type_free(&recv_type);
+  }
+
   // vector type
   {
     if (rank == OUTPUT_RANK) {
@@ -142,6 +170,34 @@ int main(int argc, char* argv[]) {
     test_collective_all_roots(mpicall_name, &params, size);
 
     MPI_Type_free(&type);
+  }
+
+  // vector type
+  {
+      if (rank == OUTPUT_RANK) {
+          printf(">>>> Vector Type (different send/recv type):\n");
+      }
+
+      MPI_Datatype send_type;
+      MPI_Type_vector(2, 5, 2, MPI_INT, &send_type);
+      MPI_Type_commit(&send_type);
+
+      MPI_Datatype recv_type;
+      MPI_Type_vector(5, 2, 3, MPI_INT, &recv_type);
+      MPI_Type_commit(&recv_type);
+
+      basic_collective_params_t params = {
+          .sendtype = send_type,
+          .recvtype = recv_type,
+          .comm = MPI_COMM_WORLD,
+          .sendcount = count,
+          .recvcount = count
+      };
+
+      test_collective_all_roots(mpicall_name, &params, size);
+
+      MPI_Type_free(&send_type);
+      MPI_Type_free(&recv_type);
   }
 
   // hvector type
