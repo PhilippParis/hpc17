@@ -55,8 +55,8 @@ void scatter_divide_and_conquer(void *sendbuf, const int sendcount, MPI_Datatype
 {
     
     int rank;
-    int size_per_element = 0;
-    int lb = 0;
+    MPI_Aint size_per_element = 0;
+    MPI_Aint lb = 0;
     MPI_Comm_rank(comm, &rank);
     MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
     
