@@ -106,7 +106,7 @@ void scatter_divide_and_conquer(char *buffer,
     if (rank == root) {
         MPI_Send(sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
-        MPI_Recv(recvbuf, blocks * recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
+        MPI_Recv(recvbuf, blocks * sendcount, sendtype, root, 0, comm, MPI_STATUS_IGNORE);
     }
 
     scatter_divide_and_conquer(buffer, sendcount, recvcount, sendtype, recvtype,
@@ -127,6 +127,7 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
 
     MPI_Aint lb;
     MPI_Aint size_per_element;
+
     MPI_Type_get_true_extent(recvtype, &lb, &size_per_element);
 
     char* buffer;
@@ -144,8 +145,10 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
         for (int p = 0; p < size; ++p) {
             printf("%i:", p);
             for (int i = 0; i < sendcount; ++i) {
-                printf("%i, ", *tmp);
-                tmp++;
+                for(int j = 0; j < size_per_element /4; ++j) {
+                    printf("%i, ", *tmp);
+                    tmp++;
+                }
             }
             printf("\n");
         }
@@ -155,10 +158,19 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
 
     scatter_divide_and_conquer(buffer, sendcount, recvcount, sendtype, recvtype,
                                0, size, root, comm, rank, size_per_element);
-    memcpy(recvbuf, buffer + sendcount * size_per_element * rank, sendcount * size_per_element);
+
+    memset(recvbuf, 0, sendcount * size_per_element);
+    MPI_Sendrecv(buffer + sendcount * size_per_element * rank, sendcount, sendtype,
+                 rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
 
 #ifdef SCATTER_DEBUG
-    printf("recv: %i: %i\n", rank, *((int*) recvbuf));
+    tmp = (int*) recvbuf;
+    printf("recv: %i: ", rank);
+    for(int j = 0; j < size_per_element /4; ++j) {
+        printf("%i, ", *tmp);
+        tmp++;
+    }
+    printf("\n");
     fflush(stdout);
 #endif
 
