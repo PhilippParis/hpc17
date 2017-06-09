@@ -124,11 +124,11 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
 
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
-    MPI_Type_get_true_extent(sendtype, &send_lb, &send_size_per_element);
+    MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
 
     MPI_Aint recv_lb;
     MPI_Aint recv_size_per_element;
-    MPI_Type_get_true_extent(recvtype, &recv_lb, &recv_size_per_element);
+    MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
     char* buffer;
     if (rank != root) {
