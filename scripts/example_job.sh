@@ -3,12 +3,17 @@
 #SBATCH -p q_student
 #SBATCH -N 32
 #SBATCH --cpu-freq=HIGH
-#SBATCH --job-name=job_32x16
+#SBATCH --job-name=scatter_32x16
 #SBATCH --ntasks-per-node=16
 
-srun /home/hunold/exp/sprojects/reprompi-1.0.1-src/bin/mpibenchmark --input-file=/home/hunold/exp/sprojects/input_gather.txt > /home/hunold/exp/sprojects/output/gather_out1.dat
-srun /home/hunold/exp/sprojects/reprompi-1.0.1-src/bin/mpibenchmark --input-file=/home/hunold/exp/sprojects/input_gather.txt > /home/hunold/exp/sprojects/output/gather_out2.dat
-srun /home/hunold/exp/sprojects/reprompi-1.0.1-src/bin/mpibenchmark --input-file=/home/hunold/exp/sprojects/input_gather.txt > /home/hunold/exp/sprojects/output/gather_out3.dat
-srun /home/hunold/exp/sprojects/reprompi-1.0.1-src/bin/mpibenchmark --input-file=/home/hunold/exp/sprojects/input_gather.txt > /home/hunold/exp/sprojects/output/gather_out4.dat
-srun /home/hunold/exp/sprojects/reprompi-1.0.1-src/bin/mpibenchmark --input-file=/home/hunold/exp/sprojects/input_gather.txt > /home/hunold/exp/sprojects/output/gather_out5.dat
+srun ~/hpc17/bin/mpibenchmark --input-file=/home/students/e1325664/hpc17/scripts/input_scatter.txt > /home/students/e1325664/output/scatter_out1.dat
+srun ~/hpc17/bin/mpibenchmark --input-file=/home/students/e1325664/hpc17/scripts/input_scatter.txt > /home/students/e1325664/output/scatter_out2.dat
+srun ~/hpc17/bin/mpibenchmark --input-file=/home/students/e1325664/hpc17/scripts/input_scatter.txt > /home/students/e1325664/output/scatter_out3.dat
+srun ~/hpc17/bin/mpibenchmark --input-file=/home/students/e1325664/hpc17/scripts/input_scatter.txt > /home/students/e1325664/output/scatter_out4.dat
+srun ~/hpc17/bin/mpibenchmark --input-file=/home/students/e1325664/hpc17/scripts/input_scatter.txt > /home/students/e1325664/output/scatter_out5.dat
+
+
+
+
+
 
