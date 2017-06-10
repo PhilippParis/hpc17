@@ -7,11 +7,11 @@ read_file_data <- function(fname, expid) {
   df
 }
 
-df1 <- read_file_data("./data_scatter_min_alloc/scatter_out1.dat", 1)
-df2 <- read_file_data("./data_scatter_min_alloc/scatter_out2.dat", 2)
-df3 <- read_file_data("./data_scatter_min_alloc/scatter_out3.dat", 3)
-df4 <- read_file_data("./data_scatter_min_alloc/scatter_out4.dat", 4)
-df5 <- read_file_data("./data_scatter_min_alloc/scatter_out5.dat", 5)
+df1 <- read_file_data("./data_scatter_min_alloc_and_direct_recv/scatter_out1.dat", 1)
+df2 <- read_file_data("./data_scatter_min_alloc_and_direct_recv/scatter_out2.dat", 2)
+df3 <- read_file_data("./data_scatter_min_alloc_and_direct_recv/scatter_out3.dat", 3)
+df4 <- read_file_data("./data_scatter_min_alloc_and_direct_recv/scatter_out4.dat", 4)
+df5 <- read_file_data("./data_scatter_min_alloc_and_direct_recv/scatter_out5.dat", 5)
 
 df <- rbind(df1, df2, df3, df4, df5)
 
