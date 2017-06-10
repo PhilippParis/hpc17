@@ -51,7 +51,7 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 /***************************************/
 
-void scatter_divide_and_conquer(char *buffer,
+void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
                                 const int sendcount, const MPI_Datatype sendtype,
                                 int start, int end, const int root, MPI_Comm comm,
                                 const int rank, const MPI_Aint size_per_element)
@@ -66,21 +66,20 @@ void scatter_divide_and_conquer(char *buffer,
     int subroot;
     int blocks;
     int newroot;
-    char* sendbuf = buffer;
-    char* recvbuf = buffer;
+    unsigned long send_offset = 0;
 
     if (root < m) {
         subroot = m;
         blocks = end - start - n;
         if (rank < m) {
             if (rank == root) {
-                sendbuf += m * size_per_element * sendcount;
+                send_offset = m * size_per_element * sendcount;
             }
             end = m;
             newroot = root;
         } else {
             if (rank == subroot) {
-                recvbuf += m * size_per_element * sendcount;
+                buffer_offset = m * size_per_element * sendcount;
             }
             start = m;
             newroot = subroot;
@@ -90,13 +89,13 @@ void scatter_divide_and_conquer(char *buffer,
         blocks = n;
         if (rank >= m) {
             if (rank == root) {
-                sendbuf += start * size_per_element * sendcount;
+                send_offset = start * size_per_element * sendcount;
             }
             start = m;
             newroot = root;
         } else {
             if (rank == subroot) {
-                recvbuf += start * size_per_element * sendcount;
+                buffer_offset = start * size_per_element * sendcount;
             }
             end = m;
             newroot = subroot;
@@ -105,12 +104,15 @@ void scatter_divide_and_conquer(char *buffer,
 
     // send data to subroot
     if (rank == root) {
-        MPI_Send(sendbuf, blocks * sendcount, sendtype, subroot, 0, comm);
+        assert(*buffer != NULL);
+        MPI_Send(*buffer + send_offset - buffer_offset, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
-        MPI_Recv(recvbuf, blocks * sendcount, sendtype, root, 0, comm, MPI_STATUS_IGNORE);
+        assert(*buffer == NULL);
+        *buffer = (char*)malloc(sendcount * size_per_element * blocks);
+        MPI_Recv(*buffer, blocks * sendcount, sendtype, root, 0, comm, MPI_STATUS_IGNORE);
     }
 
-    scatter_divide_and_conquer(buffer, sendcount, sendtype, start, end, newroot,
+    scatter_divide_and_conquer(buffer, buffer_offset, sendcount, sendtype, start, end, newroot,
                                comm, rank, size_per_element);
 }
 
@@ -136,21 +138,23 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
-    char* buffer;
-    if (rank != root) {
-        buffer = (char*)malloc(sendcount * send_size_per_element * size);
-    } else {
+    char* buffer = NULL;
+    if (rank == root) {
         buffer = (char*)sendbuf;
     }
 
-    scatter_divide_and_conquer(buffer, sendcount, sendtype, 0, size, root,
+    scatter_divide_and_conquer(&buffer, 0, sendcount, sendtype, 0, size, root,
                                comm, rank, send_size_per_element);
 
     memset(recvbuf, 0, recvcount * recv_size_per_element);
-    MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank, sendcount, sendtype,
-                 rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
-
-    if (rank != root) {
+    if (rank == root) {
+        MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank, sendcount, sendtype,
+                     rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm,
+                     MPI_STATUS_IGNORE);
+    } else if (buffer != NULL) {
+        MPI_Sendrecv(buffer, sendcount, sendtype,
+                     rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm,
+                     MPI_STATUS_IGNORE);
         free(buffer);
     }
 
