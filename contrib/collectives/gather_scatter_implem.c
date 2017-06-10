@@ -53,6 +53,7 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
                                 const int sendcount, const MPI_Datatype sendtype,
+                                void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
                                 int start, int end, const int root, const MPI_Comm comm,
                                 const int rank, const MPI_Aint size_per_element)
 {
@@ -108,11 +109,19 @@ void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
         MPI_Send(*buffer + send_offset - buffer_offset, blocks * sendcount, sendtype, subroot, 0, comm);
     } else if (rank == subroot) {
         assert(*buffer == NULL);
-        *buffer = (char*)malloc(sendcount * size_per_element * blocks);
-        MPI_Recv(*buffer, blocks * sendcount, sendtype, root, 0, comm, MPI_STATUS_IGNORE);
+        if (blocks == 1) {
+            // no forwarding required, receive directly into recvbuf -> done
+            MPI_Recv(recvbuf, recvcount, recvtype, root, 0, comm, MPI_STATUS_IGNORE);
+            return;
+        } else {
+            // forwarding required, receive into temp buffer
+            *buffer = (char*)malloc(sendcount * size_per_element * blocks);
+            MPI_Recv(*buffer, blocks * sendcount, sendtype, root, 0, comm, MPI_STATUS_IGNORE);
+        }
     }
 
-    scatter_divide_and_conquer(buffer, buffer_offset, sendcount, sendtype, start, end, newroot,
+    scatter_divide_and_conquer(buffer, buffer_offset, sendcount, sendtype,
+                               recvbuf, recvcount, recvtype, start, end, newroot,
                                comm, rank, size_per_element);
 }
 
@@ -150,18 +159,23 @@ int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype send
         buffer = (char*)sendbuf;
     }
 
-    scatter_divide_and_conquer(&buffer, 0, sendcount, sendtype, 0, size, root,
+    if (recvbuf != MPI_IN_PLACE) {
+        memset(recvbuf, 0, recvcount * recv_size_per_element);
+    }
+
+    scatter_divide_and_conquer(&buffer, 0, sendcount, sendtype,
+                               recvbuf, recvcount, recvtype, 0, size, root,
                                comm, rank, send_size_per_element);
 
     if (rank == root) {
         if (recvbuf != MPI_IN_PLACE) {
-            memset(recvbuf, 0, recvcount * recv_size_per_element);
             MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank,
                          sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
                          rank, 0, comm, MPI_STATUS_IGNORE);
         }
     } else if (buffer != NULL) {
-        memset(recvbuf, 0, recvcount * recv_size_per_element);
+        // used a temp buffer for forwarding -> get the relevant data from the
+        // temp buffer and free it
         MPI_Sendrecv(buffer, sendcount, sendtype,
                      rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm,
                      MPI_STATUS_IGNORE);
