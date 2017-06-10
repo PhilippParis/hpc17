@@ -53,7 +53,7 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 void scatter_divide_and_conquer(char *buffer,
                                 const int sendcount, const MPI_Datatype sendtype,
-                                int start, int end, const int root, MPI_Comm comm,
+                                int start, int end, const int root, const MPI_Comm comm,
                                 const int rank, const MPI_Aint size_per_element)
 {
     const int n = (end - start) / 2;
@@ -115,8 +115,9 @@ void scatter_divide_and_conquer(char *buffer,
 }
 
 // Scatter
-int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
-               void* recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+               void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+               const int root, const MPI_Comm comm)
 {
     int size;
     MPI_Comm_size(comm, &size);
@@ -125,7 +126,13 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     MPI_Comm_rank(comm, &rank);
 
     if (((rank == root) && (sendcount == 0)) || ((rank != root) && (recvcount == 0))) {
+        // nothing to do
         return MPI_SUCCESS;
+    }
+
+    if ((rank != root) && (recvbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
     }
 
     MPI_Aint send_lb;
@@ -139,6 +146,10 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     char* buffer;
     if (rank != root) {
         buffer = (char*)malloc(sendcount * send_size_per_element * size);
+        if (buffer == NULL) {
+            // out of memory
+            return MPI_ERR_INTERN;
+        }
     } else {
         buffer = (char*)sendbuf;
     }
