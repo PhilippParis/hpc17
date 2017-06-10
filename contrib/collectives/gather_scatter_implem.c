@@ -53,7 +53,7 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 void scatter_divide_and_conquer(char *buffer,
                                 const int sendcount, const MPI_Datatype sendtype,
-                                int start, int end, int root, MPI_Comm comm,
+                                int start, int end, const int root, MPI_Comm comm,
                                 const int rank, const MPI_Aint size_per_element)
 {
     const int n = (end - start) / 2;
@@ -63,9 +63,9 @@ void scatter_divide_and_conquer(char *buffer,
         return;
     }
 
-    int subroot = 0;
-    int blocks = 0;
-    int newroot = root;
+    int subroot;
+    int blocks;
+    int newroot;
     char* sendbuf = buffer;
     char* recvbuf = buffer;
 
@@ -77,6 +77,7 @@ void scatter_divide_and_conquer(char *buffer,
                 sendbuf += m * size_per_element * sendcount;
             }
             end = m;
+            newroot = root;
         } else {
             if (rank == subroot) {
                 recvbuf += m * size_per_element * sendcount;
@@ -85,13 +86,14 @@ void scatter_divide_and_conquer(char *buffer,
             newroot = subroot;
         }
     } else {
-        subroot = start; 
+        subroot = start;
         blocks = n;
         if (rank >= m) {
             if (rank == root) {
                 sendbuf += start * size_per_element * sendcount;
             }
             start = m;
+            newroot = root;
         } else {
             if (rank == subroot) {
                 recvbuf += start * size_per_element * sendcount;
