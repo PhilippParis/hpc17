@@ -53,7 +53,7 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
                                 const int sendcount, const MPI_Datatype sendtype,
-                                int start, int end, const int root, MPI_Comm comm,
+                                int start, int end, const int root, const MPI_Comm comm,
                                 const int rank, const MPI_Aint size_per_element)
 {
     const int n = (end - start) / 2;
@@ -117,8 +117,9 @@ void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
 }
 
 // Scatter
-int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
-               void* recvbuf, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm)
+int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+               void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+               const int root, const MPI_Comm comm)
 {
     int size;
     MPI_Comm_size(comm, &size);
@@ -127,7 +128,13 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     MPI_Comm_rank(comm, &rank);
 
     if (((rank == root) && (sendcount == 0)) || ((rank != root) && (recvcount == 0))) {
+        // nothing to do
         return MPI_SUCCESS;
+    }
+
+    if ((rank != root) && (recvbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
     }
 
     MPI_Aint send_lb;
@@ -146,12 +153,15 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     scatter_divide_and_conquer(&buffer, 0, sendcount, sendtype, 0, size, root,
                                comm, rank, send_size_per_element);
 
-    memset(recvbuf, 0, recvcount * recv_size_per_element);
     if (rank == root) {
-        MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank, sendcount, sendtype,
-                     rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm,
-                     MPI_STATUS_IGNORE);
+        if (recvbuf != MPI_IN_PLACE) {
+            memset(recvbuf, 0, recvcount * recv_size_per_element);
+            MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank,
+                         sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                         rank, 0, comm, MPI_STATUS_IGNORE);
+        }
     } else if (buffer != NULL) {
+        memset(recvbuf, 0, recvcount * recv_size_per_element);
         MPI_Sendrecv(buffer, sendcount, sendtype,
                      rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm,
                      MPI_STATUS_IGNORE);
