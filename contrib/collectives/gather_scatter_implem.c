@@ -30,13 +30,93 @@
 #include "mpi.h"
 #include "gather_scatter_implem.h"
 
+static int min(int a, int b)
+{
+    return (a < b) ? a : b;
+}
+
+static int to_virtual_rank(int rank, int root, int size)
+{
+    return (rank - root + size) % size;
+}
+
+static int to_real_rank(int vrank, int root, int size)
+{
+    return (vrank + root) % size;
+}
+
 /***************************************/
 // Gather
 
+static int binominal_tree_gather(const char* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+                                 char* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+                                 const int root, const MPI_Comm comm)
+{
+    int size;
+    MPI_Comm_size(comm, &size);
+
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+    const int vrank = to_virtual_rank(rank, root, size);
+
+    MPI_Aint send_lb;
+    MPI_Aint send_size_per_element;
+    MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
+
+    MPI_Aint recv_lb;
+    MPI_Aint recv_size_per_element;
+    MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
+
+    if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
+        // nothing to do
+        return MPI_SUCCESS;
+    }
+
+    char* tmpbuffer = (char*)malloc(sendcount * send_size_per_element * size);
+    if (tmpbuffer == NULL) {
+        // out of memory
+        return MPI_ERR_INTERN;
+    }
+    memcpy(tmpbuffer + sendcount * send_size_per_element * vrank,
+           sendbuf, sendcount * send_size_per_element);
+
+    int d = 1;
+    while (((vrank & d)) != d && (d < size)) {
+        if ((vrank + d) < size) {
+            const int src_vrank = vrank + d;
+            const int blocks = min(d, size - src_vrank);
+            MPI_Recv(tmpbuffer + sendcount * send_size_per_element * src_vrank,
+                     blocks * sendcount, sendtype, to_real_rank(src_vrank, root, size),
+                     0, comm, MPI_STATUS_IGNORE);
+        }
+        d <<= 1;
+    }
+
+    if (rank != root) {
+        const int dst_vrank = vrank - d;
+        const int blocks = min(d, size - vrank);
+        MPI_Send(tmpbuffer + sendcount * send_size_per_element * vrank,
+                 blocks * sendcount, sendtype, to_real_rank(dst_vrank, root, size),
+                 0, comm);
+    } else {
+        MPI_Sendrecv(tmpbuffer, sendcount * (size - rank), sendtype, rank, 0,
+                     recvbuf + recv_size_per_element * recvcount * rank,
+                     recvcount * (size - rank), recvtype, rank, 0,
+                     comm, MPI_STATUS_IGNORE);
+        MPI_Sendrecv(tmpbuffer + send_size_per_element * sendcount * (size - rank),
+                     sendcount * rank, sendtype, rank, 0,
+                     recvbuf, recvcount * rank, recvtype, rank, 0,
+                     comm, MPI_STATUS_IGNORE);
+    }
+
+    free(tmpbuffer);
+
+    return MPI_SUCCESS;
+}
+
 int MY_Gather(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
     MPI_Datatype recvtype, int root, MPI_Comm comm) {
-  MPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
-  return MPI_SUCCESS;
+  return binominal_tree_gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
 }
 
 
