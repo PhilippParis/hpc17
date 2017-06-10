@@ -7,11 +7,11 @@ read_file_data <- function(fname, expid) {
   df
 }
 
-df1 <- read_file_data("./data_gather/gather_out1.dat", 1)
-df2 <- read_file_data("./data_gather/gather_out2.dat", 2)
-df3 <- read_file_data("./data_gather/gather_out3.dat", 3)
-df4 <- read_file_data("./data_gather/gather_out4.dat", 4)
-df5 <- read_file_data("./data_gather/gather_out5.dat", 5)
+df1 <- read_file_data("./data_scatter_min_alloc/scatter_out1.dat", 1)
+df2 <- read_file_data("./data_scatter_min_alloc/scatter_out2.dat", 2)
+df3 <- read_file_data("./data_scatter_min_alloc/scatter_out3.dat", 3)
+df4 <- read_file_data("./data_scatter_min_alloc/scatter_out4.dat", 4)
+df5 <- read_file_data("./data_scatter_min_alloc/scatter_out5.dat", 5)
 
 df <- rbind(df1, df2, df3, df4, df5)
 
@@ -33,7 +33,7 @@ plot(p1)
 
 
 normalize_medians <- function(df) {
-  df$rel_lat    <- df$median  / min(df[df$test=="MPI_Gather",]$median)
+  df$rel_lat    <- df$median  / min(df[df$test=="MPI_Scatter",]$median)
   df
 }
 
@@ -48,10 +48,10 @@ p2 <- ggplot(df2, aes(x=factor(count), y=rel_lat, fill=test)) +
   xlab("message size [Bytes]")
 plot(p2)
 
-pdf("gather32x16_runtime.pdf", width=6, height=4)
+pdf("scatter32x16_runtime.pdf", width=6, height=4)
 plot(p1)
 dev.off()
 
-pdf("gather32x16_rel_runtime.pdf", width=6, height=4)
+pdf("scatter32x16_rel_runtime.pdf", width=6, height=4)
 plot(p2)
 dev.off()
