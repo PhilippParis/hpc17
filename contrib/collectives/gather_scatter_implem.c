@@ -122,6 +122,10 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     int rank;
     MPI_Comm_rank(comm, &rank);
 
+    if (((rank == root) && (sendcount == 0)) || ((rank != root) && (recvcount == 0))) {
+        return MPI_SUCCESS;
+    }
+
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
     MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
