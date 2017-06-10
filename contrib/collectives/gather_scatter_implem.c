@@ -146,9 +146,12 @@ int MY_Scatter(const void* sendbuf, int sendcount, MPI_Datatype sendtype,
     scatter_divide_and_conquer(buffer, sendcount, sendtype, 0, size, root,
                                comm, rank, send_size_per_element);
 
-    memset(recvbuf, 0, recvcount * recv_size_per_element);
-    MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank, sendcount, sendtype,
-                 rank, 0, recvbuf, recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
+    if (recvbuf != MPI_IN_PLACE) {
+        memset(recvbuf, 0, recvcount * recv_size_per_element);
+        MPI_Sendrecv(buffer + sendcount * send_size_per_element * rank,
+                     sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                     rank, 0, comm, MPI_STATUS_IGNORE);
+    }
 
     if (rank != root) {
         free(buffer);
