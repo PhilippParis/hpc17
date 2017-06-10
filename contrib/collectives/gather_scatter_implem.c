@@ -72,6 +72,13 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
         return MPI_SUCCESS;
     }
 
+    if (size == 1) {
+        // root local gather
+        return MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
+                            recvbuf, recvcount, recvtype, rank, 0,
+                            comm, MPI_STATUS_IGNORE);
+    }
+
     char* tmpbuffer = NULL;
 
     int d = 1;
@@ -98,33 +105,30 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
         const int dst_vrank = vrank - d;
         const int blocks = min(d, size - vrank); // each node local data counts 1 block
 
-        if (tmpbuffer == NULL) {
-            assert(blocks == 1);
+        if (blocks == 1) {
+            // leaf node
+            assert(tmpbuffer == NULL);
             MPI_Send(sendbuf, sendcount, sendtype, to_real_rank(dst_vrank, root, size),
                      0, comm);
         } else {
+            assert(tmpbuffer != NULL);
             MPI_Send(tmpbuffer + sendcount * send_size_per_element * vrank,
                      blocks * sendcount, sendtype, to_real_rank(dst_vrank, root, size),
                      0, comm);
             free(tmpbuffer);
         }
     } else {
-        if (tmpbuffer == NULL) {
-            // root local gather
-            MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
-                         recvbuf, recvcount, recvtype, rank, 0,
-                         comm, MPI_STATUS_IGNORE);
-        } else {
-            MPI_Sendrecv(tmpbuffer, sendcount * (size - rank), sendtype, rank, 0,
-                        recvbuf + recv_size_per_element * recvcount * rank,
-                        recvcount * (size - rank), recvtype, rank, 0,
-                        comm, MPI_STATUS_IGNORE);
-            MPI_Sendrecv(tmpbuffer + send_size_per_element * sendcount * (size - rank),
-                        sendcount * rank, sendtype, rank, 0,
-                        recvbuf, recvcount * rank, recvtype, rank, 0,
-                        comm, MPI_STATUS_IGNORE);
-            free(tmpbuffer);
-        }
+        // root node
+        assert(tmpbuffer != NULL);
+        MPI_Sendrecv(tmpbuffer, sendcount * (size - rank), sendtype, rank, 0,
+                    recvbuf + recv_size_per_element * recvcount * rank,
+                    recvcount * (size - rank), recvtype, rank, 0,
+                    comm, MPI_STATUS_IGNORE);
+        MPI_Sendrecv(tmpbuffer + send_size_per_element * sendcount * (size - rank),
+                    sendcount * rank, sendtype, rank, 0,
+                    recvbuf, recvcount * rank, recvtype, rank, 0,
+                    comm, MPI_STATUS_IGNORE);
+        free(tmpbuffer);
     }
 
     return MPI_SUCCESS;
