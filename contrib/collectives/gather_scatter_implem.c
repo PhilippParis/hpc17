@@ -44,7 +44,7 @@ static void gather_divide_and_conquer_inner(const char* sendbuf, const int sendc
                                             char* recvbuf, const int recvcount,
                                             const MPI_Datatype recvtype,
                                             const MPI_Aint recv_size_per_element,
-                                            char *tmpbuf, unsigned long tmpbuf_offset,
+                                            char *tmpbuf, int tmpbuf_offset,
                                             int start, int end, const int root,
                                             const MPI_Comm comm, const int rank,
                                             const bool is_gather_root)
@@ -59,7 +59,7 @@ static void gather_divide_and_conquer_inner(const char* sendbuf, const int sendc
     int subroot;
     int blocks;
     int newroot;
-    unsigned long recv_offset = 0;
+    int recv_offset = 0;
 
     if (root < m) {
         subroot = m;
