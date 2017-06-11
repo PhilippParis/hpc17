@@ -284,11 +284,9 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
                             comm, MPI_STATUS_IGNORE);
     }
     
+    char* tmpbuffer = NULL;
+    
     if (rank == root) {
-        
-        for (int i = 0; i < size; ++i) {
-            //printf("expected at %i: %i\n", i, ((int*)sendbuf)[i]);
-        }
         
         // root sends to children
         int d = 1;
@@ -296,6 +294,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             const int blocks = min(d, size - d);
             const int real_recv = to_real_rank(d, root, size);
             
+            // create wrap-around datatype
             MPI_Datatype type;
             int blocklens[blocks];
             int displacements[blocks];
@@ -303,20 +302,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             MPI_Type_indexed(blocks, blocklens, displacements, sendtype, &type);
             MPI_Type_commit(&type);
             
-            /*
-            printf("blocklens: ");
-            for (int i=0; i < blocks; ++i) {
-                printf("%i, ", blocklens[i]);
-            }
-            printf("\n");
-            printf("displacements: ");
-            for (int i=0; i < blocks; ++i) {
-                printf("%i, ", displacements[i]);
-            }
-            printf("\n");
-            */
-            
-            //printf("send %i blocks from %i to %i: %i\n", blocks, rank, real_recv, ((int*)(sendbuf + real_recv * send_size_per_element * sendcount))[0]);
+            // send to children
             MPI_Send(sendbuf, 1, type, real_recv ,0, comm);
             MPI_Type_free(&type);
             
@@ -324,37 +310,42 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         }
         
         // send block to itself
-        *recvbuf = (char*)malloc(recv_size_per_element * recvcount);
         MPI_Sendrecv(sendbuf + sendcount * send_size_per_element * rank,
                      sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
                      rank, 0, comm, MPI_STATUS_IGNORE);
         
     } else {
-        // receive from parent
         const int parent_vrank = get_parent_vrank(vrank, size);
         const int blocks = min(vrank - parent_vrank, size - vrank);
         const int real_sender = to_real_rank(parent_vrank, root, size);
-        //printf("recv %i blocks at %i from %i \n", blocks, rank, real_sender);
-        *recvbuf = (char*)malloc(blocks * recv_size_per_element * recvcount);
-        MPI_Recv(recvbuf, blocks * recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
-
-        // forward to children
+        
+        
         if (blocks > 1) {
+            // receive more than one block -> use tmpbuffer
+            tmpbuffer = (char*)malloc(blocks * send_size_per_element * sendcount);
+            MPI_Recv(tmpbuffer, blocks * sendcount, sendtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
+            
+            // forward to children
             int d = 1;
-            while((vrank & d) != d && (d < size)) {
+            while((vrank & d) != d && ((vrank | d) < size)) {
                 const int vrecv = vrank | d;
                 const int shifted_vrecv = vrecv - vrank;
                 const int real_recv = to_real_rank(vrecv, root, size);
                 const int blocks = min(shifted_vrecv, size - vrecv);
                 
-                //printf("forward %i blocks at %i to %i: %i\n", blocks, rank, real_recv, ((int*)(recvbuf + shifted_vrecv * send_size_per_element * sendcount))[0]);
-                
-                MPI_Send(recvbuf + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
+                MPI_Send(tmpbuffer + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
                 d <<= 1;
             }
+            
+            MPI_Sendrecv(tmpbuffer, sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                     rank, 0, comm, MPI_STATUS_IGNORE);
+            free(tmpbuffer);
+        } else {
+            // direct receive
+            MPI_Recv(recvbuf, blocks * recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
         }
     }
-    printf("%i: %i\n", rank, *((int*)recvbuf));
+    
     return MPI_SUCCESS;
 }
 
