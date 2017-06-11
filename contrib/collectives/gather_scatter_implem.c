@@ -38,10 +38,16 @@ static int min(int a, int b)
 /***************************************/
 // Gather (Divide-And-Conquer)
 
-static void gather_divide_and_conquer_inner(char *buffer,
-                                            const int sendcount, const MPI_Datatype sendtype,
-                                            int start, int end, const int root, const MPI_Comm comm,
-                                            const int rank, const MPI_Aint size_per_element)
+static void gather_divide_and_conquer_inner(char **tmpbuf, unsigned long tmpbuf_offset,
+                                            const char* sendbuf, const int sendcount,
+                                            const MPI_Datatype sendtype,
+                                            char* recvbuf, const int recvcount,
+                                            const MPI_Datatype recvtype,
+                                            int start, int end, const int root,
+                                            const MPI_Comm comm, const int rank,
+                                            const MPI_Aint send_size_per_element,
+                                            const MPI_Aint recv_size_per_element,
+                                            const bool is_gather_root)
 {
     const int n = (end - start) / 2;
     const int m = start + n;
@@ -53,21 +59,20 @@ static void gather_divide_and_conquer_inner(char *buffer,
     int subroot;
     int blocks;
     int newroot;
-    char* sendbuf = buffer;
-    char* recvbuf = buffer;
+    unsigned long recv_offset = 0;
 
     if (root < m) {
         subroot = m;
         blocks = end - start - n;
         if (rank < m) {
             if (rank == root) {
-                recvbuf += m * size_per_element * sendcount;
+                recv_offset = m;
             }
             end = m;
             newroot = root;
         } else {
             if (rank == subroot) {
-                sendbuf += m * size_per_element * sendcount;
+                tmpbuf_offset = m;
             }
             start = m;
             newroot = subroot;
@@ -77,27 +82,62 @@ static void gather_divide_and_conquer_inner(char *buffer,
         blocks = n;
         if (rank >= m) {
             if (rank == root) {
-                recvbuf += start * size_per_element * sendcount;
+                recv_offset = start;
             }
             start = m;
             newroot = root;
         } else {
             if (rank == subroot) {
-                sendbuf += start * size_per_element * sendcount;
+                tmpbuf_offset = start;
             }
             end = m;
             newroot = subroot;
         }
     }
 
-    gather_divide_and_conquer_inner(buffer, sendcount, sendtype, start, end, newroot,
-                                    comm, rank, size_per_element);
+    // subroot nodes which are responsible for more than 1 block are "forwarding
+    // nodes" and thus require a temporary buffer.
+    if ((rank == subroot) && (blocks > 1) && (*tmpbuf == NULL)) {
+        assert(!is_gather_root);
+        *tmpbuf = (char*)malloc(sendcount * send_size_per_element * blocks);
+        // copy sendbuf data to the beginning of the tmpbuf (because of the
+        // tmpbuf_offset the subroot local data is always at the beginning of
+        // the tmpbuf)
+        memcpy(*tmpbuf, sendbuf, sendcount * send_size_per_element);
+    }
+
+    gather_divide_and_conquer_inner(tmpbuf, tmpbuf_offset,
+                                    sendbuf, sendcount, sendtype,
+                                    recvbuf, recvcount, recvtype,
+                                    start, end, newroot,
+                                    comm, rank, send_size_per_element,
+                                    recv_size_per_element, is_gather_root);
 
     // get data from subroot
     if (rank == root) {
-        MPI_Recv(recvbuf, blocks * sendcount, sendtype, subroot, 0, comm, MPI_STATUS_IGNORE);
+        if (is_gather_root) {
+            // no forwarding required -> receive directly into recvbuf
+            assert(recvbuf != NULL);
+            assert(*tmpbuf == NULL);
+            MPI_Recv(recvbuf + recv_offset * recv_size_per_element * recvcount,
+                     blocks * recvcount, recvtype, subroot, 0, comm, MPI_STATUS_IGNORE);
+        } else {
+            // forwarding required -> receive into tmpbuf
+            assert(*tmpbuf != NULL);
+            MPI_Recv(*tmpbuf + (recv_offset - tmpbuf_offset) * send_size_per_element * sendcount,
+                     blocks * sendcount, sendtype, subroot, 0, comm, MPI_STATUS_IGNORE);
+        }
     } else if (rank == subroot) {
-        MPI_Send(sendbuf, blocks * sendcount, sendtype, root, 0, comm);
+        if (blocks == 1) {
+            // no forwarding required -> send sendbuf
+            assert(sendbuf != NULL);
+            assert(*tmpbuf == NULL);
+            MPI_Send(sendbuf, sendcount, sendtype, root, 0, comm);
+        } else {
+            // forwarding required -> send tmpbuf
+            assert(*tmpbuf != NULL);
+            MPI_Send(*tmpbuf, blocks * sendcount, sendtype, root, 0, comm);
+        }
     }
 }
 
@@ -126,21 +166,23 @@ static int gather_divide_and_conquer(const void* sendbuf,
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
-    char* buffer = (char*)malloc(sendcount * send_size_per_element * size);
-    memcpy(buffer + sendcount * send_size_per_element * rank,
-           sendbuf, sendcount * send_size_per_element);
-
-    gather_divide_and_conquer_inner(buffer, sendcount, sendtype, 0, size, root,
-                                    comm, rank, send_size_per_element);
-
     if (rank == root) {
         memset(recvbuf, 0, recvcount * recv_size_per_element * size);
-        MPI_Sendrecv(buffer, sendcount * size, sendtype, rank, 0,
-                     recvbuf, recvcount * size, recvtype, rank, 0,
-                     comm, MPI_STATUS_IGNORE);
+        MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
+                     recvbuf + recvcount * recv_size_per_element * rank,
+                     recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
     }
 
-    free(buffer);
+    char* tmpbuf = NULL;
+
+    gather_divide_and_conquer_inner(&tmpbuf, 0, sendbuf, sendcount, sendtype,
+                                    recvbuf, recvcount, recvtype, 0, size,
+                                    root, comm, rank, send_size_per_element,
+                                    recv_size_per_element, rank == root);
+
+    if (tmpbuf != NULL) {
+        free(tmpbuf);
+    }
 
     return MPI_SUCCESS;
 }
