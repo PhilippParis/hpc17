@@ -158,6 +158,11 @@ static int gather_divide_and_conquer(const void* sendbuf,
         return MPI_SUCCESS;
     }
 
+    if ((rank != root) && (sendbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
+    }
+
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
     MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
@@ -166,7 +171,8 @@ static int gather_divide_and_conquer(const void* sendbuf,
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
-    if (rank == root) {
+    if ((rank == root) && (sendbuf != MPI_IN_PLACE)) {
+        // copy root sendbuf into recvbuf
         memset(recvbuf, 0, recvcount * recv_size_per_element * size);
         MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
                      recvbuf + recvcount * recv_size_per_element * rank,
