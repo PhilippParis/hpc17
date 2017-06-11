@@ -235,6 +235,23 @@ void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
 }
 
 
+static void create_wrapping_datatype(int* blocklens, int* displacements, int sendcount, int vrank, int size, int root)
+{
+    if (to_real_rank(vrank, root, size) >= size) {
+        return;
+    }
+    
+    *blocklens = sendcount;
+    *displacements = to_real_rank(vrank, root, size) * sendcount;    
+    
+    int d = 1;
+    while((vrank & d) != d && ((vrank | d) < size)) {
+        create_wrapping_datatype(++blocklens, ++displacements, sendcount, vrank | d, size, root);
+        d <<= 1;
+    }
+}
+
+
 
 static int binominal_tree_scatter(const char* sendbuf, const int sendcount, const MPI_Datatype sendtype,
                                  char* recvbuf, const int recvcount, const MPI_Datatype recvtype,
@@ -278,8 +295,31 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         while (d < size) {
             const int blocks = min(d, size - d);
             const int real_recv = to_real_rank(d, root, size);
+            
+            MPI_Datatype type;
+            int blocklens[blocks];
+            int displacements[blocks];
+            create_wrapping_datatype(blocklens, displacements, sendcount, d, size, root);
+            MPI_Type_indexed(blocks, blocklens, displacements, sendtype, &type);
+            MPI_Type_commit(&type);
+            
+            /*
+            printf("blocklens: ");
+            for (int i=0; i < blocks; ++i) {
+                printf("%i, ", blocklens[i]);
+            }
+            printf("\n");
+            printf("displacements: ");
+            for (int i=0; i < blocks; ++i) {
+                printf("%i, ", displacements[i]);
+            }
+            printf("\n");
+            */
+            
             //printf("send %i blocks from %i to %i: %i\n", blocks, rank, real_recv, ((int*)(sendbuf + real_recv * send_size_per_element * sendcount))[0]);
-            MPI_Send(sendbuf + real_recv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
+            MPI_Send(sendbuf, 1, type, real_recv ,0, comm);
+            MPI_Type_free(&type);
+            
             d <<= 1;
         }
         
@@ -291,8 +331,9 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         
     } else {
         // receive from parent
-        const int blocks = min(vrank, size - vrank);
-        const int real_sender = to_real_rank(get_parent_vrank(vrank, size), root, size);
+        const int parent_vrank = get_parent_vrank(vrank, size);
+        const int blocks = min(vrank - parent_vrank, size - vrank);
+        const int real_sender = to_real_rank(parent_vrank, root, size);
         //printf("recv %i blocks at %i from %i \n", blocks, rank, real_sender);
         *recvbuf = (char*)malloc(blocks * recv_size_per_element * recvcount);
         MPI_Recv(recvbuf, blocks * recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
@@ -306,14 +347,14 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
                 const int real_recv = to_real_rank(vrecv, root, size);
                 const int blocks = min(shifted_vrecv, size - vrecv);
                 
-                //printf("forward %i blocks at %i to %i: %i\n", blocks, rank, real_recv, ((int*)recvbuf + send_size_per_element * sendcount)[0]);
+                //printf("forward %i blocks at %i to %i: %i\n", blocks, rank, real_recv, ((int*)(recvbuf + shifted_vrecv * send_size_per_element * sendcount))[0]);
                 
                 MPI_Send(recvbuf + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
                 d <<= 1;
             }
         }
     }
-    //printf("%i: %i\n", rank, *((int*)recvbuf));
+    printf("%i: %i\n", rank, *((int*)recvbuf));
     return MPI_SUCCESS;
 }
 
