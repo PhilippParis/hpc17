@@ -253,14 +253,25 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
                          blocks * recvcount, recvtype, src_rank, 0, comm, MPI_STATUS_IGNORE);
             } else {
                 if (tmpbuffer == NULL) {
-                    tmpbuffer = (char*)malloc(sendcount * send_size_per_element * size);
+                    // determine the number of expected blocks
+                    int max_blocks;
+                    if (vrank == 0) {
+                        // root node
+                        max_blocks = size;
+                    } else {
+                        // forwarding nodes
+                        max_blocks = 1 << (__builtin_ffs(vrank) - 1);
+                    }
+                    tmpbuffer = (char*)malloc(sendcount * send_size_per_element * max_blocks);
 
-                    // copy local data into temp buffer because send will use this temp buffer
-                    memcpy(tmpbuffer + sendcount * send_size_per_element * vrank,
-                           sendbuf, sendcount * send_size_per_element);
+                    // copy sendbuf data to the beginning of the tmpbuf (because
+                    // of the tmpbuf offset of vrank the subroot local data is
+                    // always at the beginning of the tmpbuf)
+                    memcpy(tmpbuffer, sendbuf, sendcount * send_size_per_element);
                 }
 
-                MPI_Recv(tmpbuffer + sendcount * send_size_per_element * src_vrank,
+                // tmpbuf has an offset of vrank thus src_rank-vrank
+                MPI_Recv(tmpbuffer + sendcount * send_size_per_element * (src_vrank - vrank),
                          blocks * sendcount, sendtype, to_real_rank(src_vrank, root, size),
                          0, comm, MPI_STATUS_IGNORE);
             }
@@ -280,9 +291,8 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
         } else {
             // forwarding node
             assert(tmpbuffer != NULL);
-            MPI_Send(tmpbuffer + sendcount * send_size_per_element * vrank,
-                     blocks * sendcount, sendtype, to_real_rank(dst_vrank, root, size),
-                     0, comm);
+            MPI_Send(tmpbuffer, blocks * sendcount, sendtype,
+                     to_real_rank(dst_vrank, root, size), 0, comm);
             free(tmpbuffer);
         }
     } else {
