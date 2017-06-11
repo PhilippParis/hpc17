@@ -308,11 +308,11 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 /***************************************/
 
-void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
-                                const int sendcount, const MPI_Datatype sendtype,
-                                void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
-                                int start, int end, const int root, const MPI_Comm comm,
-                                const int rank, const MPI_Aint size_per_element)
+static void scatter_divide_and_conquer_inner(char **buffer, unsigned long buffer_offset,
+                                             const int sendcount, const MPI_Datatype sendtype,
+                                             void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+                                             int start, int end, const int root, const MPI_Comm comm,
+                                             const int rank, const MPI_Aint size_per_element)
 {
     const int n = (end - start) / 2;
     const int m = start + n;
@@ -377,15 +377,14 @@ void scatter_divide_and_conquer(char **buffer, unsigned long buffer_offset,
         }
     }
 
-    scatter_divide_and_conquer(buffer, buffer_offset, sendcount, sendtype,
-                               recvbuf, recvcount, recvtype, start, end, newroot,
-                               comm, rank, size_per_element);
+    scatter_divide_and_conquer_inner(buffer, buffer_offset, sendcount, sendtype,
+                                     recvbuf, recvcount, recvtype, start, end, newroot,
+                                     comm, rank, size_per_element);
 }
 
-// Scatter
-int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
-               void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
-               const int root, const MPI_Comm comm)
+static int scatter_divide_and_conquer(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+                                      void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+                                      const int root, const MPI_Comm comm)
 {
     int size;
     MPI_Comm_size(comm, &size);
@@ -420,9 +419,9 @@ int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype send
         memset(recvbuf, 0, recvcount * recv_size_per_element);
     }
 
-    scatter_divide_and_conquer(&buffer, 0, sendcount, sendtype,
-                               recvbuf, recvcount, recvtype, 0, size, root,
-                               comm, rank, send_size_per_element);
+    scatter_divide_and_conquer_inner(&buffer, 0, sendcount, sendtype,
+                                     recvbuf, recvcount, recvtype, 0, size, root,
+                                     comm, rank, send_size_per_element);
 
     if (rank == root) {
         if (recvbuf != MPI_IN_PLACE) {
@@ -440,6 +439,15 @@ int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype send
     }
 
     return MPI_SUCCESS;
+}
+
+// Scatter
+int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+               void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+               const int root, const MPI_Comm comm)
+{
+    return scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf,
+                                      recvcount, recvtype, root, comm);
 }
 
 void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
