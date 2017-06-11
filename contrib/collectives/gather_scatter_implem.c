@@ -216,6 +216,16 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
     MPI_Comm_rank(comm, &rank);
     const int vrank = binominal_tree_virtual_rank(rank, root, size);
 
+    if (((vrank == 0) && (recvcount == 0)) || ((vrank != 0) && (sendcount == 0))) {
+        // nothing to do
+        return MPI_SUCCESS;
+    }
+
+    if ((vrank != 0) && (sendbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
+    }
+
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
     MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
@@ -224,16 +234,17 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
-    if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
-        // nothing to do
-        return MPI_SUCCESS;
+    if ((vrank == 0) && (sendbuf != MPI_IN_PLACE)) {
+        // copy root sendbuf into recvbuf
+        memset(recvbuf, 0, recvcount * recv_size_per_element * size);
+        MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
+                     recvbuf + recvcount * recv_size_per_element * rank,
+                     recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
     }
 
     if (size == 1) {
-        // root local gather
-        return MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
-                            recvbuf, recvcount, recvtype, rank, 0,
-                            comm, MPI_STATUS_IGNORE);
+        // nothing more to do
+        return MPI_SUCCESS;
     }
 
     // Use direct receive when root is 0, because in this case no reordering will
@@ -266,10 +277,12 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
                     }
                     tmpbuf = (char*)malloc(sendcount * send_size_per_element * max_blocks);
 
-                    // copy sendbuf data to the beginning of the tmpbuf (because
-                    // of the tmpbuf offset of vrank the subroot local data is
-                    // always at the beginning of the tmpbuf)
-                    memcpy(tmpbuf, sendbuf, sendcount * send_size_per_element);
+                    if (vrank != 0) {
+                        // copy sendbuf data to the beginning of the tmpbuf (because
+                        // of the tmpbuf offset of vrank the subroot local data is
+                        // always at the beginning of the tmpbuf)
+                        memcpy(tmpbuf, sendbuf, sendcount * send_size_per_element);
+                    }
                 }
 
                 // tmpbuf has an offset of vrank thus src_rank-vrank
@@ -282,7 +295,7 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
         d <<= 1;
     }
 
-    if (rank != root) {
+    if (vrank != 0) {
         const int dst_vrank = vrank - d;
         const int blocks = min(d, size - vrank); // each node local data counts 1 block
 
@@ -300,18 +313,14 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
         }
     } else {
         // root node
-        if (use_direct_recv) {
-            // copy local data only, all other data is already in the recvbuf
-            assert(tmpbuf == NULL);
-            MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
-                         recvbuf + recv_size_per_element * recvcount * rank,
-                         recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
-        } else {
-            // copy from tmpbuffer to recvbuf and reorder the data
+        if (!use_direct_recv) {
+            // copy from tmpbuf to recvbuf and reorder the data, note that the
+            // root local data is already in recvbuf
             assert(tmpbuf != NULL);
-            MPI_Sendrecv(tmpbuf, sendcount * (size - rank), sendtype, rank, 0,
-                         recvbuf + recv_size_per_element * recvcount * rank,
-                         recvcount * (size - rank), recvtype, rank, 0,
+            MPI_Sendrecv(tmpbuf + sendcount * send_size_per_element,
+                         sendcount * (size - rank - 1), sendtype, rank, 0,
+                         recvbuf + recv_size_per_element * recvcount * (rank + 1),
+                         recvcount * (size - rank - 1), recvtype, rank, 0,
                          comm, MPI_STATUS_IGNORE);
             MPI_Sendrecv(tmpbuf + send_size_per_element * sendcount * (size - rank),
                          sendcount * rank, sendtype, rank, 0,
