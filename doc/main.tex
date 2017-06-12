@@ -12,9 +12,9 @@
 %-------
 \subsection{Strategy Comparison}
 
-Two different Gather algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac} shows the absolute performance of each of the implementations in comparison with the OpenMPI Gather implementation.
+Two different Gather algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac} shows the performance of each of the implementations compared to the OpenMPI Gather implementation, with root = 0 and root $\neq$ 0.
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\textwidth}
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/binom/gather_32/runtime.pdf}
@@ -24,11 +24,26 @@ Two different Gather algorithms, one based on Binomial-Trees and one based on a 
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/divide_conquer/gather32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Comparison of Binomial Tree and Divide-And-Conquer Implementation}
+    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 0}
     \label{fig:gather:binom_vs_dac}
 \end{figure}
 
-As seen, both algorithms perform similarly when the root node has rank 0. For the following discussions the binomial-tree implementation was chosen as the main strategy.
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/binom/gather_32/runtime.pdf}
+        \caption{Binomial-Tree Implementation}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/divide_conquer/gather_32/runtime.pdf}
+        \caption{Divide-And-Conquer Implementation}
+    \end{subfigure}
+    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 2}
+    \label{fig:scatter:binom_vs_dac}
+\end{figure}
+
+As seen, both algorithms perform similarly when the root node has rank 0. But when using the node with rank 2 as the root, the reordering of data in the Binomial-Tree implementations leads to an overhead and therefore the Divide-And-Conquer algorithm performs better.\\
+Because the following benchmarks are all done with root = 2, the binomial-tree implementation was chosen as the main strategy.
 
 %-------
 \subsection{Description / Strategy}
@@ -59,7 +74,7 @@ No Algorithmic Latency: Due to the calculation of child and parent nodes via bit
 \subsection{Strategy Comparison}
 Again two algorithms one based on Binomial-Trees and one based on Divide-And-Conquer were tested and a comparison can be seen in Figure \ref{fig:scatter:binom_vs_dac}.
 
-\begin{figure}[h]
+\begin{figure}[H]
   \centering
   \begin{subfigure}[b]{0.49\textwidth}
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/binom/scatter_32/runtime.pdf}
@@ -69,10 +84,25 @@ Again two algorithms one based on Binomial-Trees and one based on Divide-And-Con
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/divide_conquer/scatter_32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Comparison of Binomial Tree and Divide-And-Conquer Implementation}
+    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 0}
     \label{fig:scatter:binom_vs_dac}
 \end{figure}
 
+\begin{figure}[H]
+  \centering
+  \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/binom/scatter_32/runtime.pdf}
+        \caption{Binomial-Tree Implementation}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/divide_conquer/scatter_32/runtime.pdf}
+        \caption{Divide-And-Conquer Implementation}
+    \end{subfigure}
+    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 2}
+    \label{fig:scatter:binom_vs_dac}
+\end{figure}
+
+As before, the performance of the Binomial-Tree algorithm performs worse than the Divide-And-Conquer approach when using rank $\neq$ 0, due to the reordering overhead.\\
 Due to the better performance the Divide-And-Conquer implementation is used as baseline implementation for the following discussions.
 
 
