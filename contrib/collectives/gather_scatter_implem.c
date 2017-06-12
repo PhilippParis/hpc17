@@ -36,6 +36,44 @@ static int min(int a, int b)
 }
 
 /***************************************/
+// binomial tree helper functions
+
+static int to_virtual_rank(int rank, int root, int size)
+{
+    return (rank - root + size) % size;
+}
+
+static int to_real_rank(int vrank, int root, int size)
+{
+    return (vrank + root) % size;
+}
+
+static int get_parent_vrank(int vrank, int size)
+{
+    int d = 1;
+    while((vrank & d) != d && (d < size)) {
+        d <<= 1;
+    }
+    return vrank & ~d;
+}
+
+static void create_wrapping_datatype(int* blocklens, int* displacements, int sendcount, int vrank, int size, int root)
+{
+    if (to_real_rank(vrank, root, size) >= size) {
+        return;
+    }
+    
+    *blocklens = sendcount;
+    *displacements = to_real_rank(vrank, root, size) * sendcount;    
+    
+    int d = 1;
+    while((vrank & d) != d && ((vrank | d) < size)) {
+        create_wrapping_datatype(++blocklens, ++displacements, sendcount, vrank | d, size, root);
+        d <<= 1;
+    }
+}
+
+/***************************************/
 // Gather (Divide-And-Conquer)
 
 static void gather_divide_and_conquer_inner(const char* sendbuf, const int sendcount,
@@ -352,7 +390,12 @@ void cleanup_MY_Gather(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_
 
 /***************************************/
 
+
+
+
+
 /***************************************/
+// Scatter (Divide-And-Conquer)
 
 static void scatter_divide_and_conquer_inner(char **buffer, unsigned long buffer_offset,
                                              const int sendcount, const MPI_Datatype sendtype,
@@ -487,13 +530,114 @@ static int scatter_divide_and_conquer(const void* sendbuf, const int sendcount, 
     return MPI_SUCCESS;
 }
 
+
+/***************************************/
+// Scatter (binomial-tree)
+
+static int binominal_tree_scatter(const char* sendbuf, const int sendcount, const MPI_Datatype sendtype,
+                                 char* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+                                 const int root, const MPI_Comm comm)
+{
+    int size;
+    MPI_Comm_size(comm, &size);
+
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+    const int vrank = to_virtual_rank(rank, root, size);
+
+    MPI_Aint send_lb;
+    MPI_Aint send_size_per_element;
+    MPI_Type_get_extent(sendtype, &send_lb, &send_size_per_element);
+
+    MPI_Aint recv_lb;
+    MPI_Aint recv_size_per_element;
+    MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
+
+    if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
+        // nothing to do
+        return MPI_SUCCESS;
+    }
+
+    if (size == 1) {
+        // root local scatter
+        return MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
+                            recvbuf, recvcount, recvtype, rank, 0,
+                            comm, MPI_STATUS_IGNORE);
+    }
+    
+    char* tmpbuffer = NULL;
+    
+    if (rank == root) {
+        // root sends to children
+        int d = 1;
+        while (d < size) {
+            const int blocks = min(d, size - d);
+            const int real_recv = to_real_rank(d, root, size);
+            
+            // create wrap-around datatype
+            MPI_Datatype type;
+            int blocklens[blocks];
+            int displacements[blocks];
+            create_wrapping_datatype(blocklens, displacements, sendcount, d, size, root);
+            MPI_Type_indexed(blocks, blocklens, displacements, sendtype, &type);
+            MPI_Type_commit(&type);
+            
+            // send to children
+            MPI_Send(sendbuf, 1, type, real_recv ,0, comm);
+            MPI_Type_free(&type);
+            
+            d <<= 1;
+        }
+        
+        // copy node relevant data to receive buffer
+        MPI_Sendrecv(sendbuf + sendcount * send_size_per_element * rank,
+                     sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                     rank, 0, comm, MPI_STATUS_IGNORE);
+        
+    } else {
+        const int parent_vrank = get_parent_vrank(vrank, size);
+        const int blocks = min(vrank - parent_vrank, size - vrank);
+        const int real_sender = to_real_rank(parent_vrank, root, size);
+        
+        if (blocks > 1) {
+            // receive more than one block -> use tmpbuffer
+            tmpbuffer = (char*)malloc(blocks * send_size_per_element * sendcount);
+            MPI_Recv(tmpbuffer, blocks * sendcount, sendtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
+            
+            // forward to children
+            int d = 1;
+            while((vrank & d) != d && ((vrank | d) < size)) {
+                const int vrecv = vrank | d;
+                const int shifted_vrecv = vrecv - vrank;
+                const int real_recv = to_real_rank(vrecv, root, size);
+                const int blocks = min(shifted_vrecv, size - vrecv);
+                
+                MPI_Send(tmpbuffer + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
+                d <<= 1;
+            }
+            
+            // copy node relevant data to receive buffer
+            MPI_Sendrecv(tmpbuffer, sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                     rank, 0, comm, MPI_STATUS_IGNORE);
+            free(tmpbuffer);
+        } else {
+            // direct receive
+            MPI_Recv(recvbuf, blocks * recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
+        }
+    }
+    return MPI_SUCCESS;
+}
+
 // Scatter
 int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype sendtype,
                void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
                const int root, const MPI_Comm comm)
 {
-    return scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf,
-                                      recvcount, recvtype, root, comm);
+    //return scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf,
+    //                                  recvcount, recvtype, root, comm);
+    
+    return binominal_tree_scatter(sendbuf, sendcount, sendtype, recvbuf, 
+                                  recvcount, recvtype, root, comm);
 }
 
 void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
