@@ -38,17 +38,17 @@ static int min(int a, int b)
 /***************************************/
 // binomial tree helper functions
 
-static int to_virtual_rank(int rank, int root, int size)
+static int binominal_tree_virtual_rank(int rank, int root, int size)
 {
     return (rank - root + size) % size;
 }
 
-static int to_real_rank(int vrank, int root, int size)
+static int binominal_tree_real_rank(int vrank, int root, int size)
 {
     return (vrank + root) % size;
 }
 
-static int get_parent_vrank(int vrank, int size)
+static int binominal_tree_parent_rank(int vrank, int size)
 {
     int d = 1;
     while((vrank & d) != d && (d < size)) {
@@ -214,16 +214,6 @@ static int gather_divide_and_conquer(const void* sendbuf,
 
 /***************************************/
 // Gather (Binominal Tree)
-
-static int binominal_tree_virtual_rank(int rank, int root, int size)
-{
-    return (rank - root + size) % size;
-}
-
-static int binominal_tree_real_rank(int vrank, int root, int size)
-{
-    return (vrank + root) % size;
-}
 
 static int gather_binominal_tree(const char* sendbuf, const int sendcount,
                                  const MPI_Datatype sendtype,
@@ -527,7 +517,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
 
     int rank;
     MPI_Comm_rank(comm, &rank);
-    const int vrank = to_virtual_rank(rank, root, size);
+    const int vrank = binominal_tree_virtual_rank(rank, root, size);
 
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
@@ -554,7 +544,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         int d = 1;
         while (d < size) {
             const int blocks = min(d, size - d);
-            const int real_recv = to_real_rank(d, root, size);
+            const int real_recv = binominal_tree_real_rank(d, root, size);
             
             const int message_size = blocks * send_size_per_element * sendcount;
             const int sendbuf_offset = real_recv * send_size_per_element * sendcount;
@@ -584,9 +574,9 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         }
         
     } else {
-        const int parent_vrank = get_parent_vrank(vrank, size);
+        const int parent_vrank = binominal_tree_parent_rank(vrank, size);
         const int blocks = min(vrank - parent_vrank, size - vrank);
-        const int real_sender = to_real_rank(parent_vrank, root, size);
+        const int real_sender = binominal_tree_real_rank(parent_vrank, root, size);
         
         if (blocks > 1) {
             // receive more than one block -> use tmpbuffer
@@ -598,7 +588,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             while((vrank & d) != d && ((vrank | d) < size)) {
                 const int vrecv = vrank | d;
                 const int shifted_vrecv = vrecv - vrank;
-                const int real_recv = to_real_rank(vrecv, root, size);
+                const int real_recv = binominal_tree_real_rank(vrecv, root, size);
                 const int blocks = min(shifted_vrecv, size - vrecv);
                 
                 MPI_Send(tmpbuffer + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
