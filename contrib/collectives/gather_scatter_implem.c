@@ -57,22 +57,6 @@ static int get_parent_vrank(int vrank, int size)
     return vrank & ~d;
 }
 
-static void create_wrapping_datatype(int* blocklens, int* displacements, int sendcount, int vrank, int size, int root)
-{
-    if (to_real_rank(vrank, root, size) >= size) {
-        return;
-    }
-    
-    *blocklens = sendcount;
-    *displacements = to_real_rank(vrank, root, size) * sendcount;    
-    
-    int d = 1;
-    while((vrank & d) != d && ((vrank | d) < size)) {
-        create_wrapping_datatype(++blocklens, ++displacements, sendcount, vrank | d, size, root);
-        d <<= 1;
-    }
-}
-
 /***************************************/
 // Gather (Divide-And-Conquer)
 
@@ -518,17 +502,22 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             const int blocks = min(d, size - d);
             const int real_recv = to_real_rank(d, root, size);
             
-            // create wrap-around datatype
-            MPI_Datatype type;
-            int blocklens[blocks];
-            int displacements[blocks];
-            create_wrapping_datatype(blocklens, displacements, sendcount, d, size, root);
-            MPI_Type_indexed(blocks, blocklens, displacements, sendtype, &type);
-            MPI_Type_commit(&type);
+            const int message_size = blocks * send_size_per_element * sendcount;
+            const int sendbuf_offset = real_recv * send_size_per_element * sendcount;
+            const int sendbuf_size = size * send_size_per_element * sendcount;
+            const int sendbuf_remaining_bytes = sendbuf_size - sendbuf_offset;
             
-            // send to children
-            MPI_Send(sendbuf, 1, type, real_recv ,0, comm);
-            MPI_Type_free(&type);
+            if (message_size > sendbuf_remaining_bytes) {
+                // data wraps around sendbuf -> copy data to tmpbuffer before sending
+                tmpbuffer = (char*)malloc(message_size);
+                memcpy(tmpbuffer, sendbuf + sendbuf_offset, sendbuf_remaining_bytes);
+                memcpy(tmpbuffer + sendbuf_remaining_bytes, sendbuf, message_size - sendbuf_remaining_bytes);
+                
+                MPI_Send(tmpbuffer, blocks * sendcount, sendtype, real_recv ,0, comm);
+                free(tmpbuffer);
+            } else {
+                MPI_Send(sendbuf + sendbuf_offset, blocks * sendcount, sendtype, real_recv ,0, comm);
+            }
             
             d <<= 1;
         }
