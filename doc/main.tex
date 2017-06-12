@@ -12,7 +12,7 @@
 %-------
 \subsection{Strategy Comparison}
 
-Two different Gather algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac} shows the performance of each of the implementations compared to the OpenMPI Gather implementation, with root = 0 and root $\neq$ 0.
+Two different \texttt{Gather} algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Gather} implementation with $root = 0$. Figure \ref{fig:gather:binom_vs_dac:root2} shows the same comparison with $root = 2$.
 
 \begin{figure}[H]
   \centering
@@ -24,8 +24,8 @@ Two different Gather algorithms, one based on Binomial-Trees and one based on a 
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/divide_conquer/gather32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 0}
-    \label{fig:gather:binom_vs_dac}
+    \caption{Binomial Tree and Divide-And-Conquer \texttt{Gather} with $root = 0$}
+    \label{fig:gather:binom_vs_dac:root0}
 \end{figure}
 
 \begin{figure}[H]
@@ -38,20 +38,20 @@ Two different Gather algorithms, one based on Binomial-Trees and one based on a 
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/divide_conquer/gather_32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 2}
-    \label{fig:scatter:binom_vs_dac}
+    \caption{Binomial Tree and Divide-And-Conquer \texttt{Gather} with $root = 2$}
+    \label{fig:gather:binom_vs_dac:root2}
 \end{figure}
 
-As seen, both algorithms perform similarly when the root node has rank 0. But when using the node with rank 2 as the root, the reordering of data in the Binomial-Tree implementations leads to an overhead and therefore the Divide-And-Conquer algorithm performs better.\\
-Because the following benchmarks are all done with root = 2, the binomial-tree implementation was chosen as the main strategy.
+\noindent As seen in Figure \ref{fig:gather:binom_vs_dac:root0}, both algorithms perform similarly when the root node has rank $0$. But when using rank $2$ as the root, the reordering of data in the Binomial-Tree implementations leads to an overhead and therefore the Divide-And-Conquer algorithm performs better, as seen in Figure \ref{fig:gather:binom_vs_dac:root2}.\\
+Because the following benchmarks are all done with $root = 0$, the binomial-tree implementation was chosen as the main strategy.
 
 %-------
 \subsection{Description / Strategy}
 
-All processing nodes are organized in a binomial-tree with the root of the Gather algorithm as the root of the tree. Each leaf node sends its data to its parent node and all non-leaf nodes forward all received data and the data of the node itself to the parent. \\
+All processing nodes are organized in a binomial-tree with the root of the \texttt{Gather} algorithm as the root of the tree. Each leaf node sends its data to its parent node and all non-leaf nodes forward all received data as well as the local data of the node itself to the parent. \\
 Due to the use of a binomial tree, the calculation of the parent and child ranks can be done fast via bit-operations.\\
 
-For cases where the root node has $rank \neq 0$, the algorithm uses virtual ranks:
+\noindent For cases where the root node has $rank \neq 0$, the algorithm uses virtual ranks:
 $vrank = (rank - root - N ) \mod N$. In this case the data is received in virtual rank order at the root and has to be reordered to regain the real rank order.
 
 \subsection{Round- and Bandwidth Optimality}
@@ -72,7 +72,7 @@ No Algorithmic Latency: Due to the calculation of child and parent nodes via bit
 
 %-------
 \subsection{Strategy Comparison}
-Again two algorithms one based on Binomial-Trees and one based on Divide-And-Conquer were tested and a comparison can be seen in Figure \ref{fig:scatter:binom_vs_dac}.
+Again two \texttt{Scatter} algorithms one based on Binomial-Trees and one based on Divide-And-Conquer were implemented and compared. Figure \ref{fig:scatter:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Scatter} implementation with $root = 0$. Figure \ref{fig:scatter:binom_vs_dac:root2} shows the same comparison with $root = 2$.
 
 \begin{figure}[H]
   \centering
@@ -84,8 +84,8 @@ Again two algorithms one based on Binomial-Trees and one based on Divide-And-Con
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/divide_conquer/scatter_32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 0}
-    \label{fig:scatter:binom_vs_dac}
+    \caption{Binomial Tree and Divide-And-Conquer \texttt{Scatter} with $root = 0$}
+    \label{fig:scatter:binom_vs_dac:root0}
 \end{figure}
 
 \begin{figure}[H]
@@ -98,23 +98,26 @@ Again two algorithms one based on Binomial-Trees and one based on Divide-And-Con
         \includegraphics[width=\textwidth]{../benchmarks/openmpi/root=2/divide_conquer/scatter_32/runtime.pdf}
         \caption{Divide-And-Conquer Implementation}
     \end{subfigure}
-    \caption{Binomial Tree and Divide-And-Conquer Implementation with root = 2}
-    \label{fig:scatter:binom_vs_dac}
+    \caption{Binomial Tree and Divide-And-Conquer \texttt{Scatter} with $root = 2$}
+    \label{fig:scatter:binom_vs_dac:root2}
 \end{figure}
 
-As before, the performance of the Binomial-Tree algorithm performs worse than the Divide-And-Conquer approach when using rank $\neq$ 0, due to the reordering overhead.\\
-Due to the better performance the Divide-And-Conquer implementation is used as baseline implementation for the following discussions.
+\noindent As before, the performance of the Binomial-Tree algorithm performs worse than the Divide-And-Conquer approach when using $rank \neq 0$, due to the reordering overhead on the \texttt{Scatter} root node. Also the Divide-And-Conquer algorithm performs better for medium and big message sizes.\\
+Due to the better overall performance of the Divide-And-Conquer based algorithm, this implementation was  chosen as baseline implementation for the following discussions.
 
 
 %-------
 \subsection{Description / Strategy}
 
-The processes are split into two sets and the root nodes selects one process (subroot) from the other set and sends half of the data to it. This is repeated for both sets until every node has received its data.
+Divide-And-Conquer works by recursively breaking down a given problem into a number of sub-problems, in this case two sub-problems. The processes are split into two sets and the root nodes selects one process, denoted as \textit{subroot}, from the other set and sends half of the data to it. This is repeated for both sets until every node has received its data. On each communication round the number of senders is increased by a factor of two, while the amount of data to be send on each node is decreased by a factor of two.\newline
+
+\noindent Cases where the \texttt{Scatter} root node has $rank \neq 0$ are already covered by this algorithm and thus don't require additional efforts. 
 
 %-------
 \subsection{Round- and Bandwidth Optimality}
 
 \subsubsection{Round Optimality}
+
 Using the Divide-And-Conquer approach, the data is distributed to the nodes along a binary tree, where all communication on the same tree-layer is executed at the same time. Therefore the number of communication rounds is limited by $\mathcal{O}(log(p))$.
 
 \subsubsection{Bandwidth Optimality}
@@ -160,8 +163,8 @@ No Algorithmic Latency: Each Processor can start to send/receive after $\mathcal
     \caption{\mygather compared to \mpigather of \texttt{Open MPI 1.10.3}}
 \end{figure}
 
-In both test cases, either with 512 or with 496 processes the implementations of \mygather and \mpigather (\texttt{Open MPI 1.10.3}) perform for the most cases similarly.
-But with message sizes > 100 KByte the \mpigather implementation outperforms \mygather. We assume \mpigather implements some optimizations when dealing with big message sizes.
+In both test cases, either with $512$ or with $496$ processes the implementations of \mygather and \mpigather (\texttt{Open MPI 1.10.3}) perform similarly in most of the cases. 
+But with message sizes $> 100$ KByte the \mpigather implementation outperforms \mygather. We assume \mpigather implements some optimizations when dealing with big message sizes.
 
 \begin{figure}[H]
     \centering
@@ -191,7 +194,7 @@ But with message sizes > 100 KByte the \mpigather implementation outperforms \my
     \caption{\mygather compared to \mpigather of \texttt{MVAPICH2 2.2}}
 \end{figure}
 
-Compared to the benchmark results before, the \mpigather implementation of \texttt{MVAPICH2 2.2} also slightly outperforms the \mygather implementations with smaller message sizes.
+\noindent Compared to the benchmark results before, the \mpigather implementation of \texttt{MVAPICH2 2.2} also slightly outperforms the \mygather implementations with smaller message sizes. The rather big latency changes when the message size exceeds $10$ KByte is also quite interesting, we assume that \texttt{MVAPICH2 2.2} switches to another algorithm when reaching a certain threshold.
 
 %-------
 \subsection{Experiments and Discussion -- \myscatter}
@@ -226,6 +229,7 @@ Compared to the benchmark results before, the \mpigather implementation of \text
 
 Compared to the \texttt{Open MPI 1.10.3} implementation of \mpiscatter, \myscatter achieves similar performance for smaller message sizes. 
 For bigger message sizes \mpiscatter outperforms \myscatter, which is again assumed to be because of optimizations for bigger messages.
+We haven't found a reason for the particular widespread latency distribution of \myscatter when the message size is $10$ kByte, as seen in Figure \ref{fig:Scatter:OpenMPI:Rel:32}. 
 
 
 \begin{figure}[H]
@@ -256,5 +260,5 @@ For bigger message sizes \mpiscatter outperforms \myscatter, which is again assu
     \caption{\myscatter compared to \mpiscatter of \texttt{MVAPICH2 2.2}}
 \end{figure}
 
-The \texttt{MVAPICH2 2.2} implementation of \mpigather outperforms \mygather in nearly all cases.
+\noindent The \texttt{MVAPICH2 2.2} implementation of \mpigather outperforms \mygather in nearly all cases. The rather big latency changes when the message size exceeds $10$ KByte is also quite interesting, we assume that \texttt{MVAPICH2 2.2} switches to another algorithm when reaching a certain threshold.
 
