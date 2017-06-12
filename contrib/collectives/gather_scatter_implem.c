@@ -312,7 +312,7 @@ static int gather_binominal_tree(const char* sendbuf, const int sendcount,
                     } else {
                         // forwarding nodes, use max. number of childrens to
                         // estimate the max. number of blocks
-                        max_blocks = min(1 << (__builtin_ffs(vrank) - 1), size - vrank);
+                        max_blocks = min(1 << __builtin_ctz(vrank), size - vrank);
                     }
                     tmpbuf = (char*)malloc(sendcount * send_size_per_element * max_blocks);
 
