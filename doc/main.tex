@@ -63,7 +63,8 @@ $2^{count\_zeros(vrank)}$ and $size - vrank$.
 Due to the tree structure nodes on the same level send data to their parent nodes in parallel, so each layer of the tree represents one communication round. Therefore the number of communications rounds is limited by $\mathcal{O}(log(p))$.
 
 \subsubsection{Bandwidth Optimality}
-Per round at most $2^{log(p)-1} \frac{m}{p}$ units of data are sent. % TODO
+When m is the total amount of data to be gathered, then every process sends and receives $\frac{m}{p}$ units of data at every step. The algorithm takes $p-1$ steps to complete, and therefore the bandwidth term is $\frac{p-1}{p} m \beta$.\\
+This cannot be reduced because the root node has to receive $\frac{m}{p}$ units of data from $p-1$ processes.
 
 %-------
 \subsection{Harmful Algorithmic Latency}
@@ -125,12 +126,12 @@ Using the Divide-And-Conquer approach, the data is distributed to the nodes alon
 
 \subsubsection{Bandwidth Optimality}
 
-
+The root node has to send $\frac{m}{p}$ units of data to $p-1$ processes and therefore the bandwidth term for the Divide-And-Conquer Scatter is $\frac{p-1}{p} m \beta$.
 
 %-------
 \subsection{Harmful Algorithmic Latency}
 
-No Algorithmic Latency: Each Processor can start to send/receive after $\mathcal{O}(1)$ steps.
+No Algorithmic Latency: Each processor can start to send/receive after $\mathcal{O}(1)$ steps.
 
 %----------------------------------------------------------------------
 \section{Experimental Results}
