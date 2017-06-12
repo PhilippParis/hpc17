@@ -1,3 +1,5 @@
+add_definitions(-std=c99)
+
 add_executable(test_coll_implem
 ${CMAKE_SOURCE_DIR}/contrib/test/test_helpers/buffer_handling.c
 ${CMAKE_SOURCE_DIR}/contrib/test/test_helpers/test_utils.c
