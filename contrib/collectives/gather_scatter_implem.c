@@ -536,17 +536,15 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
     MPI_Aint recv_lb;
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
+    
+    if ((vrank != 0) && (sendbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
+    }
 
     if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
         // nothing to do
         return MPI_SUCCESS;
-    }
-
-    if (size == 1) {
-        // root local scatter
-        return MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
-                            recvbuf, recvcount, recvtype, rank, 0,
-                            comm, MPI_STATUS_IGNORE);
     }
     
     char* tmpbuffer = NULL;
@@ -579,9 +577,11 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         }
         
         // copy node relevant data to receive buffer
-        MPI_Sendrecv(sendbuf + sendcount * send_size_per_element * rank,
-                     sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
-                     rank, 0, comm, MPI_STATUS_IGNORE);
+        if (recvbuf != MPI_IN_PLACE) {
+            MPI_Sendrecv(sendbuf + sendcount * send_size_per_element * rank,
+                sendcount, sendtype, rank, 0, recvbuf, recvcount, recvtype,
+                rank, 0, comm, MPI_STATUS_IGNORE);
+        }
         
     } else {
         const int parent_vrank = get_parent_vrank(vrank, size);
