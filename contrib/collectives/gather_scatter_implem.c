@@ -213,10 +213,22 @@ static int gather_divide_and_conquer(const void* sendbuf,
 }
 
 /***************************************/
-// Gather
+// Gather (Binominal Tree)
 
-static int binominal_tree_gather(const char* sendbuf, const int sendcount, const MPI_Datatype sendtype,
-                                 char* recvbuf, const int recvcount, const MPI_Datatype recvtype,
+static int binominal_tree_virtual_rank(int rank, int root, int size)
+{
+    return (rank - root + size) % size;
+}
+
+static int binominal_tree_real_rank(int vrank, int root, int size)
+{
+    return (vrank + root) % size;
+}
+
+static int gather_binominal_tree(const char* sendbuf, const int sendcount,
+                                 const MPI_Datatype sendtype,
+                                 char* recvbuf, const int recvcount,
+                                 const MPI_Datatype recvtype,
                                  const int root, const MPI_Comm comm)
 {
     int size;
@@ -224,7 +236,17 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
 
     int rank;
     MPI_Comm_rank(comm, &rank);
-    const int vrank = to_virtual_rank(rank, root, size);
+    const int vrank = binominal_tree_virtual_rank(rank, root, size);
+
+    if (((vrank == 0) && (recvcount == 0)) || ((vrank != 0) && (sendcount == 0))) {
+        // nothing to do
+        return MPI_SUCCESS;
+    }
+
+    if ((vrank != 0) && (sendbuf == MPI_IN_PLACE)) {
+        // only root can use MPI_IN_PLACE
+        return MPI_ERR_BUFFER;
+    }
 
     MPI_Aint send_lb;
     MPI_Aint send_size_per_element;
@@ -234,68 +256,101 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
     MPI_Aint recv_size_per_element;
     MPI_Type_get_extent(recvtype, &recv_lb, &recv_size_per_element);
 
-    if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
-        // nothing to do
-        return MPI_SUCCESS;
+    if ((vrank == 0) && (sendbuf != MPI_IN_PLACE)) {
+        // copy root sendbuf into recvbuf
+        memset(recvbuf, 0, recvcount * recv_size_per_element * size);
+        MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
+                     recvbuf + recvcount * recv_size_per_element * rank,
+                     recvcount, recvtype, rank, 0, comm, MPI_STATUS_IGNORE);
     }
 
     if (size == 1) {
-        // root local gather
-        return MPI_Sendrecv(sendbuf, sendcount, sendtype, rank, 0,
-                            recvbuf, recvcount, recvtype, rank, 0,
-                            comm, MPI_STATUS_IGNORE);
+        // nothing more to do
+        return MPI_SUCCESS;
     }
 
-    char* tmpbuffer = NULL;
+    // Use direct receive when root is 0, because in this case no reordering will
+    // be required.
+    const bool use_direct_recv = (root == 0);
+
+    char* tmpbuf = NULL;
 
     int d = 1;
     while (((vrank & d)) != d && (d < size)) {
         if ((vrank + d) < size) {
-            if (tmpbuffer == NULL) {
-                tmpbuffer = (char*)malloc(sendcount * send_size_per_element * size);
-
-                // copy local data into temp buffer because send will use this temp buffer
-                memcpy(tmpbuffer + sendcount * send_size_per_element * vrank,
-                       sendbuf, sendcount * send_size_per_element);
-            }
-
             const int src_vrank = vrank + d;
             const int blocks = min(d, size - src_vrank); // each node local data counts 1 block
-            MPI_Recv(tmpbuffer + sendcount * send_size_per_element * src_vrank,
-                     blocks * sendcount, sendtype, to_real_rank(src_vrank, root, size),
-                     0, comm, MPI_STATUS_IGNORE);
+
+            if ((vrank == 0) && use_direct_recv) {
+                // receive directly into recvbuf, no reordering required
+                const int src_rank = binominal_tree_real_rank(src_vrank, root, size);
+                MPI_Recv(recvbuf + recvcount * recv_size_per_element * src_rank,
+                         blocks * recvcount, recvtype, src_rank, 0, comm, MPI_STATUS_IGNORE);
+            } else {
+                if (tmpbuf == NULL) {
+                    // determine the number of expected blocks
+                    int max_blocks;
+                    if (vrank == 0) {
+                        // root node
+                        max_blocks = size;
+                    } else {
+                        // forwarding nodes, use max. number of childrens to
+                        // estimate the max. number of blocks
+                        max_blocks = min(1 << __builtin_ctz(vrank), size - vrank);
+                    }
+                    tmpbuf = (char*)malloc(sendcount * send_size_per_element * max_blocks);
+
+                    if (vrank != 0) {
+                        // copy sendbuf data to the beginning of the tmpbuf (because
+                        // of the tmpbuf offset of vrank the subroot local data is
+                        // always at the beginning of the tmpbuf)
+                        memcpy(tmpbuf, sendbuf, sendcount * send_size_per_element);
+                    }
+                }
+
+                // tmpbuf has an offset of vrank thus src_rank-vrank
+                MPI_Recv(tmpbuf + sendcount * send_size_per_element * (src_vrank - vrank),
+                         blocks * sendcount, sendtype,
+                         binominal_tree_real_rank(src_vrank, root, size),
+                         0, comm, MPI_STATUS_IGNORE);
+            }
         }
         d <<= 1;
     }
 
-    if (rank != root) {
+    if (vrank != 0) {
         const int dst_vrank = vrank - d;
         const int blocks = min(d, size - vrank); // each node local data counts 1 block
 
         if (blocks == 1) {
             // leaf node
-            assert(tmpbuffer == NULL);
-            MPI_Send(sendbuf, sendcount, sendtype, to_real_rank(dst_vrank, root, size),
-                     0, comm);
+            assert(tmpbuf == NULL);
+            MPI_Send(sendbuf, sendcount, sendtype,
+                     binominal_tree_real_rank(dst_vrank, root, size), 0, comm);
         } else {
-            assert(tmpbuffer != NULL);
-            MPI_Send(tmpbuffer + sendcount * send_size_per_element * vrank,
-                     blocks * sendcount, sendtype, to_real_rank(dst_vrank, root, size),
-                     0, comm);
-            free(tmpbuffer);
+            // forwarding node
+            assert(tmpbuf != NULL);
+            MPI_Send(tmpbuf, blocks * sendcount, sendtype,
+                     binominal_tree_real_rank(dst_vrank, root, size), 0, comm);
+            free(tmpbuf);
         }
     } else {
         // root node
-        assert(tmpbuffer != NULL);
-        MPI_Sendrecv(tmpbuffer, sendcount * (size - rank), sendtype, rank, 0,
-                    recvbuf + recv_size_per_element * recvcount * rank,
-                    recvcount * (size - rank), recvtype, rank, 0,
-                    comm, MPI_STATUS_IGNORE);
-        MPI_Sendrecv(tmpbuffer + send_size_per_element * sendcount * (size - rank),
-                    sendcount * rank, sendtype, rank, 0,
-                    recvbuf, recvcount * rank, recvtype, rank, 0,
-                    comm, MPI_STATUS_IGNORE);
-        free(tmpbuffer);
+        if (!use_direct_recv) {
+            // copy from tmpbuf to recvbuf and reorder the data, note that the
+            // root local data is already in recvbuf
+            assert(tmpbuf != NULL);
+            MPI_Sendrecv(tmpbuf + sendcount * send_size_per_element,
+                         sendcount * (size - rank - 1), sendtype, rank, 0,
+                         recvbuf + recv_size_per_element * recvcount * (rank + 1),
+                         recvcount * (size - rank - 1), recvtype, rank, 0,
+                         comm, MPI_STATUS_IGNORE);
+            MPI_Sendrecv(tmpbuf + send_size_per_element * sendcount * (size - rank),
+                         sendcount * rank, sendtype, rank, 0,
+                         recvbuf, recvcount * rank, recvtype, rank, 0,
+                         comm, MPI_STATUS_IGNORE);
+            free(tmpbuf);
+        }
     }
 
     return MPI_SUCCESS;
@@ -303,9 +358,10 @@ static int binominal_tree_gather(const char* sendbuf, const int sendcount, const
 
 int MY_Gather(const void* sendbuf, int sendcount, MPI_Datatype sendtype, void* recvbuf, int recvcount,
     MPI_Datatype recvtype, int root, MPI_Comm comm) {
-  //return binominal_tree_gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
-    return gather_divide_and_conquer(sendbuf, sendcount, sendtype,
-                                     recvbuf, recvcount, recvtype, root, comm);
+    return gather_binominal_tree(sendbuf, sendcount, sendtype, recvbuf,
+                                 recvcount, recvtype, root, comm);
+    /*return gather_divide_and_conquer(sendbuf, sendcount, sendtype,
+                                     recvbuf, recvcount, recvtype, root, comm);*/
 }
 
 
