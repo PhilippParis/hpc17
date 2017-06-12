@@ -532,14 +532,12 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         return MPI_ERR_BUFFER;
     }
 
-    if (((rank == root) && (recvcount == 0)) || ((rank != root) && (sendcount == 0))) {
+    if (((vrank == 0) && (recvcount == 0)) || ((vrank != 0) && (sendcount == 0))) {
         // nothing to do
         return MPI_SUCCESS;
     }
     
-    char* tmpbuffer = NULL;
-    
-    if (rank == root) {
+    if (vrank == 0) {
         // root sends to children
         int d = 1;
         while (d < size) {
@@ -553,7 +551,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             
             if (message_size > sendbuf_remaining_bytes) {
                 // data wraps around sendbuf -> copy data to tmpbuffer before sending
-                tmpbuffer = (char*)malloc(message_size);
+                char* tmpbuffer = (char*)malloc(message_size);
                 memcpy(tmpbuffer, sendbuf + sendbuf_offset, sendbuf_remaining_bytes);
                 memcpy(tmpbuffer + sendbuf_remaining_bytes, sendbuf, message_size - sendbuf_remaining_bytes);
                 
@@ -580,7 +578,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
         
         if (blocks > 1) {
             // receive more than one block -> use tmpbuffer
-            tmpbuffer = (char*)malloc(blocks * send_size_per_element * sendcount);
+            char* tmpbuffer = (char*)malloc(blocks * send_size_per_element * sendcount);
             MPI_Recv(tmpbuffer, blocks * sendcount, sendtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
             
             // forward to children
@@ -591,7 +589,8 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
                 const int real_recv = binominal_tree_real_rank(vrecv, root, size);
                 const int blocks = min(shifted_vrecv, size - vrecv);
                 
-                MPI_Send(tmpbuffer + shifted_vrecv * send_size_per_element * sendcount, blocks * sendcount, sendtype, real_recv ,0, comm);
+                MPI_Send(tmpbuffer + shifted_vrecv * send_size_per_element * sendcount,
+                         blocks * sendcount, sendtype, real_recv ,0, comm);
                 d <<= 1;
             }
             
@@ -601,7 +600,7 @@ static int binominal_tree_scatter(const char* sendbuf, const int sendcount, cons
             free(tmpbuffer);
         } else {
             // direct receive
-            MPI_Recv(recvbuf, blocks * recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(recvbuf, recvcount, recvtype, real_sender, 0, comm, MPI_STATUS_IGNORE);
         }
     }
     return MPI_SUCCESS;
