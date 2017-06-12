@@ -611,11 +611,11 @@ int MY_Scatter(const void* sendbuf, const int sendcount, const MPI_Datatype send
                void* recvbuf, const int recvcount, const MPI_Datatype recvtype,
                const int root, const MPI_Comm comm)
 {
-    //return scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf,
-    //                                  recvcount, recvtype, root, comm);
+    return scatter_divide_and_conquer(sendbuf, sendcount, sendtype, recvbuf,
+                                      recvcount, recvtype, root, comm);
     
-    return binominal_tree_scatter(sendbuf, sendcount, sendtype, recvbuf, 
-                                  recvcount, recvtype, root, comm);
+    //return binominal_tree_scatter(sendbuf, sendcount, sendtype, recvbuf,
+    //                              recvcount, recvtype, root, comm);
 }
 
 void init_MY_Scatter(int sendcount, MPI_Datatype sendtype, int recvcount, MPI_Datatype recvtype, int root, MPI_Comm comm) {
