@@ -55,7 +55,7 @@ Due to the use of a binomial tree, the calculation of the parent and child ranks
 $vrank = (rank - root - N ) \mod N$. In this case the data is received in virtual rank order at the root and has to be reordered to regain the real rank order.\\
 
 \noindent To reduce the memory footprint of the algorithm, each node determines the expected amount of data it needs to store in the temporary buffer. Leaf nodes don't require any temporary buffer. For the root node the number of expected blocks, where a block is the amount of data of a single node, is equal to the the number of the nodes in the communicator. Each forwarding node (non-leaf and non-root nodes) can simply calculate the amount of expected blocks by taking the minimum of 
-$2^{number\_of\_zero\_bits(rank)}$ and $size - rank$.
+$2^{count\_zeros(vrank)}$ and $size - vrank$.
 
 \subsection{Round- and Bandwidth Optimality}
 
