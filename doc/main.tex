@@ -12,20 +12,45 @@
 %-------
 \subsection{Strategy Comparison}
 
-\subsubsection{Binomial Tree}
+Two different Gather algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac} shows the absolute performance of each of the implementations in comparison with the OpenMPI Gather implementation.
 
-\subsubsection{Divide-And-Conquer}
+\begin{figure}[h]
+  \centering
+  \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/binom/gather_32/runtime.pdf}
+        \caption{Binomial-Tree Implementation}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.49\textwidth}
+        \includegraphics[width=\textwidth]{../benchmarks/openmpi/divide_conquer/gather32/runtime.pdf}
+        \caption{Divide-And-Conquer Implementation}
+    \end{subfigure}
+    \caption{Comparison of Binomial Tree and Divide-And-Conquer Implementation}
+    \label{fig:gather:binom_vs_dac}
+\end{figure}
+
+As seen, both algorithms perform similarly when the root node has rank 0. For the following discussions the binomial-tree implementation was chosen as the main strategy.
 
 %-------
 \subsection{Description / Strategy}
 
+All processing nodes are organized in a binomial-tree with the root of the Gather algorithm as the root of the tree. Each leaf node sends its data to its parent node and all non-leaf nodes forward all received data and the data of the node itself to the parent. \\
+Due to the use of a binomial tree, the calculation of the parent and child ranks can be done fast via bit-operations.\\
 
+For cases where the root node has $rank \neq 0$, the algorithm uses virtual ranks:
+$vrank = (rank - root - N ) \mod N$. In this case the data is received in virtual rank order at the root and has to be reordered to regain the real rank order.
 
-%-------
 \subsection{Round- and Bandwidth Optimality}
+
+\subsubsection{Round Optimality}
+Due to the tree structure nodes on the same level send data to their parent nodes in parallel, so each layer of the tree represents one communication round. Therefore the number of communications rounds is limited by $\mathcal{O}(log(p))$.
+
+\subsubsection{Bandwidth Optimality}
+Per round at most $2^{log(p)-1} \frac{m}{p}$ units of data are sent. % TODO
 
 %-------
 \subsection{Harmful Algorithmic Latency}
+No Algorithmic Latency: Due to the calculation of child and parent nodes via bit operations, each processor can start to send/receive after $\mathcal{O}(1)$ steps.
+
 
 %----------------------------------------------------------------------
 \section{Algorithm \myscatter}
