@@ -199,6 +199,7 @@ static int gather_divide_and_conquer(const void* sendbuf,
     // one block contains all data of one node
     int tmp_block_size;
     MPI_Pack_size(sendcount, sendtype, comm, &tmp_block_size);
+    const MPI_Datatype tmptype = MPI_PACKED;
 
     MPI_Aint recv_lb;
     MPI_Aint recv_size_per_element;
@@ -214,7 +215,7 @@ static int gather_divide_and_conquer(const void* sendbuf,
 
     gather_divide_and_conquer_inner(sendbuf, sendcount, sendtype, send_size_per_element,
                                     recvbuf, recvcount, recvtype, recv_size_per_element,
-                                    NULL, 0, MPI_BYTE, tmp_block_size,
+                                    NULL, 0, tmptype, tmp_block_size,
                                     0, size, root, comm, rank, rank == root);
 
     return MPI_SUCCESS;
