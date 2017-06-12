@@ -12,7 +12,7 @@
 %-------
 \subsection{Strategy Comparison}
 
-Two different \texttt{Gather} algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Figure \ref{fig:gather:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Gather} implementation with $root = 0$. Figure \ref{fig:gather:binom_vs_dac:root2} shows the same comparison with $root = 2$.
+Two different \texttt{Gather} algorithms, one based on Binomial-Trees and one based on a Divide-And-Conquer approach were implemented and tested. Both algorithms fulfill the specification of \mpigather and use the minimum amount of memory whenever possible. Figure \ref{fig:gather:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Gather} implementation with $root = 0$. Figure \ref{fig:gather:binom_vs_dac:root2} shows the same comparison with $root = 2$.
 
 \begin{figure}[H]
   \centering
@@ -42,17 +42,20 @@ Two different \texttt{Gather} algorithms, one based on Binomial-Trees and one ba
     \label{fig:gather:binom_vs_dac:root2}
 \end{figure}
 
-\noindent As seen in Figure \ref{fig:gather:binom_vs_dac:root0}, both algorithms perform similarly when the root node has rank $0$. But when using rank $2$ as the root, the reordering of data in the Binomial-Tree implementations leads to an overhead and therefore the Divide-And-Conquer algorithm performs better, as seen in Figure \ref{fig:gather:binom_vs_dac:root2}.\\
+\noindent As seen in Figure \ref{fig:gather:binom_vs_dac:root0}, both algorithms perform similarly when the root node has rank $0$. In this case the binomial-tree based algorithm directly receives into the \textit{recvbuf} without the need of expensive reordering. But when using rank $2$ as the root, the reordering of data in the Binomial-Tree implementation cannot be avoided and thus leads to an overhead. Therefore the Divide-And-Conquer algorithm performs better when rank $\neq 0$, as seen in Figure \ref{fig:gather:binom_vs_dac:root2}.\\
 Because the following benchmarks are all done with $root = 0$, the binomial-tree implementation was chosen as the main strategy.
 
 %-------
 \subsection{Description / Strategy}
 
 All processing nodes are organized in a binomial-tree with the root of the \texttt{Gather} algorithm as the root of the tree. Each leaf node sends its data to its parent node and all non-leaf nodes forward all received data as well as the local data of the node itself to the parent. \\
-Due to the use of a binomial tree, the calculation of the parent and child ranks can be done fast via bit-operations.\\
+Due to the use of a binomial tree, the calculation of the parent and child ranks can be done via fast bit-operations.\\
 
 \noindent For cases where the root node has $rank \neq 0$, the algorithm uses virtual ranks:
-$vrank = (rank - root - N ) \mod N$. In this case the data is received in virtual rank order at the root and has to be reordered to regain the real rank order.
+$vrank = (rank - root - N ) \mod N$. In this case the data is received in virtual rank order at the root and has to be reordered to regain the real rank order.\\
+
+\noindent To reduce the memory footprint of the algorithm, each node determines the expected amount of data it needs to store in the temporary buffer. Leaf nodes don't require any temporary buffer. For the root node the number of expected blocks, where a block is the amount of data of a single node, is equal to the the number of the nodes in the communicator. Each forwarding node (non-leaf and non-root nodes) can simply calculate the amount of expected blocks by taking the minimum of 
+$2^{number\_of\_zero\_bits(rank)}$ and $size - rank$.
 
 \subsection{Round- and Bandwidth Optimality}
 
@@ -72,7 +75,7 @@ No Algorithmic Latency: Due to the calculation of child and parent nodes via bit
 
 %-------
 \subsection{Strategy Comparison}
-Again two \texttt{Scatter} algorithms one based on Binomial-Trees and one based on Divide-And-Conquer were implemented and compared. Figure \ref{fig:scatter:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Scatter} implementation with $root = 0$. Figure \ref{fig:scatter:binom_vs_dac:root2} shows the same comparison with $root = 2$.
+Again two \texttt{Scatter} algorithms one based on Binomial-Trees and one based on Divide-And-Conquer were implemented and compared. Both algorithms fulfill the specification of \mpigather and use the minimum amount of memory whenever possible. Figure \ref{fig:scatter:binom_vs_dac:root0} shows the performance of each implementation compared to the \texttt{Open MPI Scatter} implementation with $root = 0$. Figure \ref{fig:scatter:binom_vs_dac:root2} shows the same comparison with $root = 2$.
 
 \begin{figure}[H]
   \centering
